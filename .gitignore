@@ -1,0 +1,42 @@
+# ===== 密钥与环境（硬规则：零提交）=====
+.env
+.env.*
+!.env.example
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ===== Node / 前端 =====
+node_modules/
+dist/
+.vite/
+*.local
+
+# ===== Neo4j / Docker 运行数据 =====
+neo4j/data/
+neo4j/logs/
+neo4j/import/
+neo4j/plugins/
+data/
+*.dump
+
+# ===== 本地样本与运行产物（避免版权/隐私与脏数据入库）=====
+samples/private/
+uploads/
+runs/
+*.log
+
+# ===== IDE / OS =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
