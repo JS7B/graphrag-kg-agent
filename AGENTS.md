@@ -6,7 +6,7 @@
 
 **技术栈**：Python 3.11+ / FastAPI / Pydantic（后端 API 与 LLM 结构化输出）· Neo4j + Vector Index（图谱与向量存储，Docker 本地部署）· OpenAI-compatible chat & embedding（LLM）· React + Vite + TypeScript（前端）· Docker Compose（编排）。
 
-> 通用编码规范、个人环境与工作流约定见全局 `~/.claude/CLAUDE.md` 与，此处只覆盖本方案的导航、硬规则与决策边界。
+> 通用编码规范、个人环境与工作流约定见全局 `~/.claude/CLAUDE.md`，此处只覆盖本方案的导航、硬规则与决策边界。
 
 ## 快速导航
 

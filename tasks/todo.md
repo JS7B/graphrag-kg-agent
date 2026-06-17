@@ -35,7 +35,7 @@
 
 验证：
 
-- [ ] 新开发者按 README 可以启动 Neo4j、后端和前端。（待装 Docker 后端到端验证）
+- [~] 新开发者按 README 可以启动 Neo4j、后端和前端。（Neo4j 已端到端验证通过：docker compose up + Cypher 实测；前后端待实现）
 - [x] 密钥、缓存、运行数据不会被提交。（.gitignore 已覆盖，git status 已确认）
 
 ### 后端基础与配置
