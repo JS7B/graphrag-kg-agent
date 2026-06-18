@@ -6,7 +6,9 @@
 
 **Architecture:** 单页应用（SPA），顶部全局栏 + 三主视图（问答工作台 / 文档库 / 图谱）+ 设置页。组件为带 props 类型的占位实现；`PixelAgent` 的 idle 动作做出可见效果作为 CSS 分层动画样板。数据钩子与 API 客户端留接口、返回占位，不接业务后端。
 
-**Tech Stack:** Vite · React 18 · TypeScript · CSS Modules + CSS 变量（设计 token）· Cytoscape.js（仅装依赖不实现）。Node 24 / npm 11。
+**Tech Stack:** Vite · React · TypeScript · CSS Modules + CSS 变量（设计 token）· Cytoscape.js（仅装依赖不实现）。Node 24 / npm 11。
+
+> 实现注记（2026-06-17 执行后回填）：Vite 脚手架实际锁定 React 19.2 / Vite 8 / TypeScript 6（非计划初稿设想的 React 18，构建正常）。`src/vite-env.d.ts` 未单独创建——等价能力由 `tsconfig.app.json` 的 `types: ["vite/client"]` 全局提供。
 
 ## Global Constraints
 
