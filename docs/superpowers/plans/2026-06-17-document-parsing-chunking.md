@@ -12,7 +12,8 @@
 
 - 本板块是纯解析库：不碰 Neo4j、不碰 embedding、不接 HTTP。
 - chunk 尺寸单位 = 字符数，不引 tokenizer，不绑厂商。
-- chunk 大小默认值：`max_chars=800` / `overlap_chars=150` / `min_chars=100`，作为 `chunker.py` 模块常量，可传参覆盖，**不进 .env**（解析策略非部署配置）。
+- chunk 大小默认值：`max_chars=800` / `overlap_chars=150`，作为 `chunker.py` 模块常量，可传参覆盖，**不进 .env**（解析策略非部署配置）。
+- **边界处微小 chunk 是 provenance 优先的有意产物**：跨页/跨标题不合并，故文档边界处可能产生小 chunk，不做回填消除（回填会污染 provenance）。
 - provenance 三要素：字符偏移 `[char_start, char_end)`（左闭右开）+ PDF 页码（1-based，非 PDF 为 None）+ Markdown 标题路径（list[str]，无则空列表）。
 - 所有偏移量相对 `ParsedDocument.raw_text`；核心不变量：`raw_text[chunk.char_start:chunk.char_end] == chunk.text`。
 - overlap 只作用在「单个超长 Block 内部滑窗」，跨 Block 聚合不加 overlap。
@@ -216,9 +217,11 @@ git commit -m "feat(parsing): 数据模型与 ParseError 异常"
 
 **Interfaces:**
 - Consumes: `Block`, `Chunk`, `SourceLocation`（Task 1）
-- Produces: `chunk_blocks(blocks: list[Block], document_id: str, max_chars: int = MAX_CHARS, overlap_chars: int = OVERLAP_CHARS, min_chars: int = MIN_CHARS) -> list[Chunk]`；模块常量 `MAX_CHARS=800`、`OVERLAP_CHARS=150`、`MIN_CHARS=100`
+- Produces: `chunk_blocks(blocks: list[Block], document_id: str, raw_text: str, max_chars: int = MAX_CHARS, overlap_chars: int = OVERLAP_CHARS) -> list[Chunk]`；模块常量 `MAX_CHARS=800`、`OVERLAP_CHARS=150`
 
-本任务只实现「第 2 步聚合 + 第 3 步小块回填」。假设输入 Block 均 ≤ max_chars（超长预拆在 Task 3 加）。聚合产出的 chunk：`char_start` = 首块起点，`char_end` = 末块终点，`text` = `raw_text` 对应区间（这里用各块 text 间不重叠拼接——见实现说明）。
+本任务只实现「第 2 步聚合」。假设输入 Block 均 ≤ max_chars（超长预拆在 Task 3 加）。聚合产出的 chunk：`char_start` = 首块起点，`char_end` = 末块终点，`text` = `raw_text` 对应区间（见实现说明）。
+
+**无小块回填（pre-flight 审查结论）**：贪心聚合的合并条件 = 适配 max_chars 且同页同标题；任何「跨边界的微小尾块」用同样守卫照样合并不了，回填是死代码。且回填若跨边界会污染 provenance，与 provenance 优先设计冲突。故不实现回填，边界处的微小 chunk 是有意接受的产物。
 
 **实现说明（偏移与 text 的一致性）**：同一文档相邻 Block 的偏移是连续或留白的。chunk.text 必须满足 `raw_text[start:end] == chunk.text`。因此 chunker 不能简单 `"".join(block.text)`，而要让 caller 传入 raw_text。**调整接口**：`chunk_blocks(blocks, document_id, raw_text, ...)`，chunk.text 一律取 `raw_text[chunk_start:chunk_end]`。
 
@@ -284,13 +287,22 @@ def test_chunk_index_is_sequential():
     assert [c.chunk_index for c in chunks] == [0, 1]
 
 
-def test_tiny_trailing_block_backfills_into_previous():
-    # 第一块接近上限，第二块很小且同页同标题 → 小块并入前块（不超 max_chars 时）
+def test_small_trailing_block_same_boundary_merges():
+    # 同页同标题、合计 <= max_chars 的尾块在聚合阶段就并入，不另起 chunk
     raw = "A" * 700 + "\n\n" + "B" * 10
     blocks = [_block("A" * 700, 0), _block("B" * 10, 702)]
     chunks = chunk_blocks(blocks, document_id="d", raw_text=raw)
     assert len(chunks) == 1
     assert chunks[0].location.char_end == 712
+
+
+def test_small_trailing_block_cross_boundary_stays_separate():
+    # 跨页的微小尾块不回填，保留为独立小 chunk（provenance 优先的有意产物）
+    raw = "A" * 700 + "\n\n" + "B" * 10
+    blocks = [_block("A" * 700, 0, page=1), _block("B" * 10, 702, page=2)]
+    chunks = chunk_blocks(blocks, document_id="d", raw_text=raw)
+    assert len(chunks) == 2
+    assert chunks[1].location.page == 2
 
 
 def test_empty_blocks_returns_empty():
@@ -314,6 +326,9 @@ raw_text[chunk.char_start:chunk.char_end] == chunk.text。
 
 注意：本模块假设输入 Block 已经 <= max_chars（超长预拆见 split_oversized_block，
 由 Task 3 在调用前应用）。
+
+不做小块回填：贪心聚合已用「适配 max_chars 且同页同标题」合并所有能合并的相邻块；
+跨页/跨标题的微小尾块不回填（回填会污染 provenance），是 provenance 优先的有意产物。
 """
 
 import logging
@@ -324,7 +339,6 @@ logger = logging.getLogger(__name__)
 
 MAX_CHARS = 800
 OVERLAP_CHARS = 150
-MIN_CHARS = 100
 
 
 def _make_chunk(index: int, group: list[Block], document_id: str, raw_text: str) -> Chunk:
@@ -351,18 +365,15 @@ def chunk_blocks(
     raw_text: str,
     max_chars: int = MAX_CHARS,
     overlap_chars: int = OVERLAP_CHARS,
-    min_chars: int = MIN_CHARS,
 ) -> list[Chunk]:
     """把 Block 列表聚合成 Chunk 列表。
 
-    第 2 步聚合：相邻块在「累积长度 + 下一块 <= max_chars」且同页同标题时合并。
-    第 3 步小块回填：收尾 chunk 若 < min_chars，尝试并入前一 chunk（受 max_chars
-    与同页同标题约束）；否则保留为独立小 chunk。
+    聚合：相邻块在「累积长度 + 下一块 <= max_chars」且同页同标题时合并进同一 chunk；
+    否则收尾当前 chunk、另起一个。
     """
     if not blocks:
         return []
 
-    # 第 2 步：聚合成 group（每个 group 一个候选 chunk）
     groups: list[list[Block]] = []
     current: list[Block] = [blocks[0]]
     current_len = len(blocks[0].text)
@@ -377,36 +388,22 @@ def chunk_blocks(
             current_len = len(block.text)
     groups.append(current)
 
-    # 第 3 步：小块回填到前一 group（同页同标题且并入后不超 max_chars）
-    merged: list[list[Block]] = []
-    for group in groups:
-        group_len = sum(len(b.text) for b in group)
-        if (
-            merged
-            and group_len < min_chars
-            and _same_boundary(merged[-1][-1], group[0])
-            and sum(len(b.text) for b in merged[-1]) + group_len <= max_chars
-        ):
-            merged[-1].extend(group)
-        else:
-            merged.append(group)
-
     return [
         _make_chunk(i, group, document_id, raw_text)
-        for i, group in enumerate(merged)
+        for i, group in enumerate(groups)
     ]
 ```
 
 - [ ] **Step 4: 运行测试验证通过**
 
 Run（从 `backend/`）：`conda run -n myself python -m pytest tests/parsing/test_chunker.py -q`
-Expected: PASS（7 passed）
+Expected: PASS（8 passed）
 
 - [ ] **Step 5: 提交**
 
 ```bash
 git add backend/app/parsing/chunker.py backend/tests/parsing/test_chunker.py
-git commit -m "feat(parsing): chunker 聚合相邻块与小块回填（同页同标题守卫）"
+git commit -m "feat(parsing): chunker 聚合相邻块（同页同标题守卫）"
 ```
 
 ---
@@ -551,7 +548,7 @@ def split_oversized_block(
 - [ ] **Step 4: 运行测试验证通过**
 
 Run（从 `backend/`）：`conda run -n myself python -m pytest tests/parsing/test_chunker.py -q`
-Expected: PASS（12 passed）
+Expected: PASS（13 passed）
 
 - [ ] **Step 5: 提交**
 
