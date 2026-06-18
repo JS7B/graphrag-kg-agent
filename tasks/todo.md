@@ -72,18 +72,18 @@
 
 ### Neo4j 图谱与向量索引
 
-- [ ] 定义 Neo4j 约束和索引。
-- [ ] 写入 Document / Chunk。
-- [ ] 写入 embedding。
-- [ ] 创建 Neo4j Vector Index。
-- [ ] 实现向量查询。
-- [ ] 写入 Entity / Relation。
+- [x] 定义 Neo4j 约束和索引。（document_id/chunk_id 唯一约束 + chunk 向量索引，awaitIndexes 等上线）
+- [x] 写入 Document / Chunk。（确定性 chunk_id 幂等 MERGE，保留 provenance）
+- [x] 写入 embedding。（批量同序，写入前维度校验）
+- [x] 创建 Neo4j Vector Index。（cosine，维度走 EMBEDDING_DIM 配置）
+- [x] 实现向量查询。（db.index.vector.queryNodes top-k，ChunkHit 带 provenance + score）
+- [ ] 写入 Entity / Relation。（属于「实体识别与关系抽取」板块，本板块未做）
 
 验证：
 
-- [ ] Neo4j Browser 能看到文档、chunk、实体和关系。
-- [ ] 向量检索能召回相关 chunk。
-- [ ] 图谱中没有明显重复或孤立的异常数据。
+- [~] Neo4j Browser 能看到文档、chunk、实体和关系。（文档+chunk 已可见；实体/关系待抽取板块）
+- [x] 向量检索能召回相关 chunk。（真实 embedding 端到端召回验证，10 集成测试连真实 Neo4j 通过）
+- [x] 图谱中没有明显重复或孤立的异常数据。（chunk_id 幂等 MERGE 防重复，HAS_CHUNK 关联防孤立）
 
 ### 实体识别与关系抽取
 
@@ -214,3 +214,4 @@
 - 2026-06-17：装好 WSL2 + Docker Desktop，docker compose 拉起 Neo4j 5.26 并用 cypher-shell 实测连通，README 的「一键起 Neo4j」端到端可复现。
 - 2026-06-17：完成后端 FastAPI 骨架（首次试用「总指挥 + 后台 worktree 执行代理」工作流）：config/clients/routers 分层、pydantic-settings 读 .env、lifespan 管理 Neo4j 驱动、统一错误响应、/health 与 /health/deps 双探针。pytest 2 passed，/health/deps 返回 neo4j:ok。主窗口 review 通过后合并，清理 worktree 时发现并停掉了代理残留的 uvicorn 进程（经验：子代理启动的后台进程需主动回收）。
 - 2026-06-17：「大脑 + 工人」多窗口并行首次完整跑通。后端 worktree（feat/backend）做文档解析与切块、前端 worktree（feat/frontend）做工作台脚手架，并行推进。大脑 review 发现并打回后端 PDF 同页重复段落的偏移 bug（违反偏移可追溯硬规则，测试未覆盖、靠读代码发现），后端修复并加回归测试（42→44 全过）。前端因基线落后于协作约定提交，先 `git merge main` 同步再合（避免误删 CLAUDE/AGENTS 协作约定）。两条经 review 后由大脑按「先后端后前端」顺序合入 main，全量回归通过。
+- 2026-06-18：复用 feat/backend worktree 完成「Neo4j 图谱与向量索引」（Document/Chunk + embedding + 向量检索；Entity/Relation 留给抽取板块）。新增 app/graph：schema（约束+向量索引+awaitIndexes 防 51N63）、writer（确定性 chunk_id 幂等 MERGE，保留 provenance）、embedding（批量同序）、search（原生向量索引召回带 score）；schema 初始化接入 lifespan（失败仅告警）；EMBEDDING_DIM 走配置。10 集成测试真连 Neo4j 且 test_ 前缀自清理不污染共享库，全量 54 passed。大脑 review 通过后合并。流程小插曲：工人首次「执行完毕」时忘 commit，提醒后补交（再次印证交接信号=本地 commit）。
