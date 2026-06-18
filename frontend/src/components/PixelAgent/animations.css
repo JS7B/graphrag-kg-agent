@@ -1,4 +1,4 @@
-/* idle：呼吸 + 偶尔眨眼。做出可见效果，作为 CSS 分层方案的样板。 */
+/* idle：呼吸（上下浮动）。做出可见效果，作为 CSS 分层方案的样板。眨眼等细节留待后续。 */
 @keyframes breathe {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-2px); }
