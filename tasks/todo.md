@@ -57,18 +57,18 @@
 
 ### 文档解析与切块
 
-- [ ] 实现 Markdown 解析。
-- [ ] 实现 txt 解析。
-- [ ] 实现 PDF 解析。
-- [ ] 实现 GitHub 仓库文档导入。
-- [ ] 实现 chunking 策略。
-- [ ] 记录 source metadata。
+- [x] 实现 Markdown 解析。
+- [x] 实现 txt 解析。
+- [x] 实现 PDF 解析。
+- [x] 实现 GitHub 仓库文档导入。
+- [x] 实现 chunking 策略。
+- [x] 记录 source metadata。
 
 验证：
 
-- [ ] 样本文档能解析成稳定 chunk。
-- [ ] 每个 chunk 能追溯到来源文档。
-- [ ] PDF 样本解析结果可用于检索和引用。
+- [x] 样本文档能解析成稳定 chunk。（42 parsing 测试通过）
+- [x] 每个 chunk 能追溯到来源文档。（raw_text[start:end]==chunk.text 断言守住偏移可追溯）
+- [x] PDF 样本解析结果可用于检索和引用。（PyMuPDF，跨页偏移+页码，扫描页降级）
 
 ### Neo4j 图谱与向量索引
 
@@ -213,3 +213,4 @@
 - 2026-06-17：敲定 4 项待确认决策（PDF=PyMuPDF、可视化=Cytoscape.js、LLM=占位符不绑厂商、仓库名=graphrag-kg-agent）。完成项目基础设施：迁入新仓库并 git init + 推送 GitHub（公开）、配置 `.gitignore`、创建 backend/frontend/samples/evals 目录骨架、编写 `.env.example`、`docker-compose.yml`（Neo4j 5.26）、README 草稿。本机未装 Docker，Neo4j 端到端验证待装 Docker 后进行。
 - 2026-06-17：装好 WSL2 + Docker Desktop，docker compose 拉起 Neo4j 5.26 并用 cypher-shell 实测连通，README 的「一键起 Neo4j」端到端可复现。
 - 2026-06-17：完成后端 FastAPI 骨架（首次试用「总指挥 + 后台 worktree 执行代理」工作流）：config/clients/routers 分层、pydantic-settings 读 .env、lifespan 管理 Neo4j 驱动、统一错误响应、/health 与 /health/deps 双探针。pytest 2 passed，/health/deps 返回 neo4j:ok。主窗口 review 通过后合并，清理 worktree 时发现并停掉了代理残留的 uvicorn 进程（经验：子代理启动的后台进程需主动回收）。
+- 2026-06-17：「大脑 + 工人」多窗口并行首次完整跑通。后端 worktree（feat/backend）做文档解析与切块、前端 worktree（feat/frontend）做工作台脚手架，并行推进。大脑 review 发现并打回后端 PDF 同页重复段落的偏移 bug（违反偏移可追溯硬规则，测试未覆盖、靠读代码发现），后端修复并加回归测试（42→44 全过）。前端因基线落后于协作约定提交，先 `git merge main` 同步再合（避免误删 CLAUDE/AGENTS 协作约定）。两条经 review 后由大脑按「先后端后前端」顺序合入 main，全量回归通过。
