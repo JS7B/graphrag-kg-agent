@@ -1,21 +1,94 @@
 .list {
-  list-style: none;
-  font-size: var(--text-sm);
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-3);
+  list-style: none;
 }
 
 .item {
-  color: var(--color-text-muted);
+  display: grid;
+  grid-template-columns: var(--space-4) 1fr;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .current {
-  color: var(--color-accent);
-  font-weight: 600;
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+  box-shadow: var(--shadow-sm);
+}
+
+.marker {
+  width: var(--space-3);
+  height: var(--space-3);
+  margin-top: var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+}
+
+.current .marker {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+.content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.topLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.statusStarted {
+  color: var(--color-info);
+  background: var(--color-info-soft);
+}
+
+.statusProgress {
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.statusDone {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.statusFailed {
+  color: var(--color-error);
+  background: var(--color-error-soft);
+}
+
+.message {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.time {
+  color: var(--color-text-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
 }
 
 .empty {
-  font-size: var(--text-sm);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   color: var(--color-text-muted);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
 }
