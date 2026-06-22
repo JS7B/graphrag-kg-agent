@@ -32,7 +32,7 @@ data/
 # ===== 本地样本与运行产物（避免版权/隐私与脏数据入库）=====
 samples/private/
 uploads/
-runs/
+/runs/
 *.log
 
 # ===== IDE / OS =====

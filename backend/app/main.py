@@ -11,7 +11,10 @@ from app.graph import ensure_schema
 from app.logging_conf import setup_logging
 from app.routers.chat import router as chat_router
 from app.routers.documents import router as documents_router
+from app.routers.graph import router as graph_router
 from app.routers.health import router as health_router
+from app.routers.runs import router as runs_router
+from app.runs import RunStore
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +24,10 @@ async def lifespan(app: FastAPI):
     """应用生命周期：启动时建 Neo4j 驱动并确保 schema，关闭时释放。
 
     ensure_schema 幂等；Neo4j 不可用时仅告警、不阻断启动，与 /health/deps 的降级哲学一致。
+    RunStore 进程内常驻（不持久化），重启后历史 Run 丢失——前端刷新会重查 Document 状态。
     """
     app.state.neo4j = get_driver()
+    app.state.runs = RunStore()
     try:
         ensure_schema(app.state.neo4j)
     except Exception as exc:  # noqa: BLE001 — 依赖不可用不应阻断启动
@@ -40,6 +45,8 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(chat_router)
     app.include_router(documents_router)
+    app.include_router(runs_router)
+    app.include_router(graph_router)
     return app
 
 
