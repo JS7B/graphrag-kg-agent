@@ -3,16 +3,25 @@
 响应用 model_dump(by_alias=True) 输出前端期望的 camelCase。
 """
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.qa import answer_question
+from app.runs.models import RunKind
+from app.runs.tasks import run_chat
 
 router = APIRouter(prefix="/api", tags=["qa"])
 
 
 class ChatRequest(BaseModel):
     question: str
+
+
+class ChatResponse(BaseModel):
+    """异步问答响应：立即返回 runId，前端订阅 SSE 终态事件拿 answer。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    run_id: str = Field(alias="runId")
 
 
 _CHUNK_QUERY = """
@@ -24,11 +33,19 @@ RETURN c.chunk_id AS chunk_id, d.source_path AS document_name,
 
 
 @router.post("/chat")
-async def chat(request: Request, body: ChatRequest) -> dict:
-    """对问题做 GraphRAG 检索并返回带引用答案。"""
+async def chat(
+    request: Request, background_tasks: BackgroundTasks, body: ChatRequest
+) -> dict:
+    """对问题起异步 GraphRAG 检索任务（B 板块）。
+
+    立即返回 runId，前端订阅 /api/runs/{runId}/events/stream，终态事件带 answer。
+    searching→checking→writing→done 的进度让前端像素 Agent 状态机跟着真实执行走。
+    """
+    store = request.app.state.runs
     driver = request.app.state.neo4j
-    answer = answer_question(driver, body.question)
-    return answer.model_dump(by_alias=True)
+    run = store.create_run(RunKind.CHAT)
+    background_tasks.add_task(run_chat, driver, store, run.id, body.question)
+    return ChatResponse(run_id=run.id).model_dump(by_alias=True)
 
 
 @router.get("/chunks/{chunk_id}")

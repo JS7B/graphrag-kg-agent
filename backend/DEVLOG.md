@@ -154,3 +154,31 @@
   - **Pydantic v2 alias 模型要用 snake_case 构造需配 populate_by_name**：响应模型用 `Field(alias="entityCount")` 输出 camelCase，但内部代码用 `entity_count=...` 构造时 Pydantic v2 默认只认 alias，报 `Field required`。解法：`model_config = ConfigDict(populate_by_name=True)`，既能 snake 构造又能 camel 输出。
   - **测试维度(8)与生产维度(3072)冲突**：路由调用 `ingest_document` 内部读 `get_settings().embedding_dim` 做维度校验（3072），但测试用 8 维占位向量。解法：测试 fixture 把配置实例的 `embedding_dim` 临时 monkeypatch 成 8（lru_cache 返回同一实例，可改属性），让 8 维向量通过校验并真实写入——写图逻辑本身不被 mock，仍走真实代码。
   - **modelverse API key 配额耗尽**：全量回归时 2 个真实 LLM gate 测试（test_llm_real / test_chat_api）因 key 日限额 1000 用尽返回 403。非本次改动问题，待配额恢复后补真实端到端冒烟。
+
+
+## 2026-06-22 Run/事件流 + SSE + 异步化 + 图谱查询 API（B 板块）
+
+- 做了什么：把 A 板块的同步上传/问答升级为异步——上传/问答/删除立即返回 `runId`，后台任务跑真实链路并 emit 进度事件，前端通过 SSE 订阅 `/api/runs/{runId}/events/stream` 拿实时进度（像素 Agent 动画由真实 `RunEvent` 驱动）。问答终态事件直接带 `answer`（方案 a，前端少一次往返）。另补齐前端 P3 的图谱查询 API（实体列表/邻域/搜索）。
+
+- 这是什么：
+  - **Run / RunEvent**：一次异步执行（入库/问答/删除）= 一个 Run，过程中的进度信号 = RunEvent。RunEvent 有 stage（12 个锁定值：idle/uploading/parsing/...）、status（running/succeeded/failed）、message、answer（仅问答终态）。前端像素 Agent 的状态机就靠这些 stage 驱动。
+  - **SSE（Server-Sent Events）**：服务器单向推消息给浏览器的协议。`text/event-stream` 响应，每条消息 `data: {...}\n\n`。浏览器用 `EventSource` API 订阅。比 WebSocket 简单（单向够用），uvicorn 原生支持。
+  - **BackgroundTasks**：FastAPI/Starlette 的后台任务机制——响应返回后异步执行。比 Celery/RQ 轻得多（单进程、不持久化、重启丢失），符合 CLAUDE.md「简单优先，先跑通再命名」。
+  - **EventSourceResponse（sse_starlette）**：把一个 async generator 包成 SSE 响应，yield dict/str 就是一条 SSE 事件。
+
+- 为什么需要：A 板块同步链路让前端能拿真实数据了，但前端三视图（尤其像素 Agent 动画 + RunEventTimeline）全部跑在 mock 事件上——CLAUDE.md 硬要求「像素 Agent 动画状态必须来自真实 RunEvent，不得用前端伪造状态驱动」。B 板块就是把「后端真实执行」翻译成「前端能消费的进度信号」的桥。不做它，前端动效永远是假的。
+
+- 为什么这么做（关键取舍）：
+  - **内存 RunStore，不持久化**：Run 是瞬态进度信号，重启丢失可接受——前端刷新会重新查 Document 状态（那部分落 Neo4j 了）。把 Run 存图库反而复杂化，且 SSE 读图库是反模式（每秒轮询）。CLAUDE.md「简单优先」。
+  - **BackgroundTasks 而非 Celery**：单进程、单用户、演示场景够用。引入 Celery 要加 broker（Redis/RabbitMQ）、worker 进程、序列化，过度设计。决策边界明确允许「先用简单后台任务」。
+  - **SSE 终态事件带 answer（方案 a）**：前端不用再发一次请求取答案，订阅 SSE 流到终态就拿到完整 answer。少一次往返、代码更简。
+  - **chat 后台任务拆 answer_question 的内部步骤**：不整体调 answer_question，而是拆成 search→rerank→expand→build→chat，在每个里程碑 emit 事件（searching/checking/writing）。这样前端能看到检索的全过程，而非一个黑盒 loading。
+  - **asyncio.Queue 做订阅**：每个 SSE 订阅者一个队列，append_event 时向所有队列投递副本。subscribe 时先投历史事件（不漏）。简单可靠。
+  - **删除用纯 MENTIONS 关系判孤立实体**：Entity 不直接连 Document，孤立性 = 不再被任何 Chunk MENTIONS。最初我臆造了 MENTIONS_FROM_DOC 关系类型（不存在），核实真实关系后改对。
+
+- 踩了什么坑：
+  - **anyio 默认双 backend（asyncio+trio）**：`@pytest.mark.anyio` 会让测试在 asyncio 和 trio 两个 backend 各跑一次，trio 没装就虚假失败。解法：conftest 里把 `anyio_backend` fixture 固定为 `"asyncio"`。注意 `pytest.ini` 里写 `anyio_backend=` 不被 pytest 识别（anyio 读的是 fixture 不是 ini 选项）。
+  - **chat.py 删除旧 import 后 QA 测试失效**：异步化后 chat.py 不再 import `answer_question`，旧的 `test_chat_api` 还 monkeypatch `answer_question`，且假设 POST 同步返回 answer。彻底更新该测试适配异步契约（mock run_chat emit 终态事件）。
+  - **ChatResponse 缺 alias**：Pydantic 模型字段 `run_id` 默认序列化成 `run_id`，前端要 `runId`。需 `Field(alias="runId")` + `model_dump(by_alias=True)`。与 documents 路由同款坑。
+  - **TestClient 不触发 lifespan**：`TestClient(app)` 不进 `with` 块就不跑 lifespan，`app.state.runs` 不存在。测试里手动注入 `app.state.runs = RunStore()` 和 `app.state.neo4j = driver`。
+  - **modelverse API key 配额耗尽**：全量回归时 `test_llm_real` 因 key 日限额 1000 用尽返回 403，非本次改动问题。

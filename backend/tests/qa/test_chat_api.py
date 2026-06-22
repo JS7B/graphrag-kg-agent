@@ -1,21 +1,16 @@
-"""问答 API 集成（真实 LLM gate）：端到端 POST /api/chat + GET /api/chunks/{id}。
+"""问答 API 集成（B 板块：异步 chat + chunk 反查）。
 
-向量召回本身已由 graph 板块 test_search 覆盖；这里 monkeypatch search_chunks 直接返回
-已写入的 chunk（避开真实 3072 维与测试 8 维索引的冲突），让真实 rerank + 真实 chat 跑通，
-重点验证：路由、reranker、邻域扩展、上下文组装、LLM 带引用答案、chunk 反查。
+POST /api/chat 改异步：返回 runId，后台 run_chat 跑检索+生成（契约由 test_chat.py
+覆盖）。本文件聚焦真实 chunk 反查（GET /api/chunks/{id}）走真实库；chat 异步契约
+此处也补一条真实 seed 驱动的验证，mock run_chat 发 emit 含 answer 的终态事件。
 """
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.clients.llm import is_configured
-from app.graph.search import ChunkHit
 from app.main import create_app
-from app.qa import pipeline as pipeline_mod
-
-pytestmark = pytest.mark.skipif(
-    not is_configured(), reason="LLM 未配置，跳过问答 API 真实测试"
-)
+from app.runs import RunStore
+from app.runs.models import RunEvent, RunStatus, Stage
 
 DOC = "test_qa_doc"
 
@@ -49,49 +44,55 @@ def _seed_graph(driver):
     )
 
 
-def _hits():
-    return [
-        ChunkHit(
-            chunk_id=f"{DOC}#0", document_id=DOC, chunk_index=0,
-            text="GraphRAG 依赖 Neo4j 存储知识图谱，使用向量检索召回相关片段。",
-            char_start=0, char_end=40, heading_path=["GraphRAG 系统"], score=0.9,
-        ),
-        ChunkHit(
-            chunk_id=f"{DOC}#1", document_id=DOC, chunk_index=1,
-            text="FastAPI 提供后端接口，Pydantic 负责数据校验。",
-            char_start=40, char_end=80, heading_path=["GraphRAG 系统"], score=0.8,
-        ),
-    ]
-
-
 def _client(driver):
-    """构造 TestClient 并注入测试 driver（不走 lifespan，避免重连/重建 schema）。"""
+    """构造 TestClient 并注入测试 driver + RunStore（不走 lifespan）。"""
     app = create_app()
     app.state.neo4j = driver
-    return TestClient(app)
+    app.state.runs = RunStore()
+    return TestClient(app), app
 
 
-def test_chat_returns_answer_with_citations(ensured_schema, monkeypatch):
+def test_chat_returns_run_id_with_seed(monkeypatch, ensured_schema):
+    """B 板块：chat 异步返回 runId；mock run_chat emit 含 answer 的终态事件。
+
+    原同步测试（monkeypatch answer_question）已失效——chat 改异步后由 run_chat 后台
+    执行。这里保留真实 seed + 真实 chunk 反查的价值，mock run_chat 验证 SSE 终态带 answer。
+    """
     _seed_graph(ensured_schema)
-    monkeypatch.setattr(
-        pipeline_mod, "search_chunks", lambda d, v, *, top_k, database: _hits()
-    )
-    client = _client(ensured_schema)
-    resp = client.post("/api/chat", json={"question": "GraphRAG 依赖什么来存储知识图谱？"})
+
+    async def _fake_run_chat(driver, store, run_id, question):
+        store.append_event(
+            run_id, RunEvent(stage=Stage.SEARCHING, status=RunStatus.RUNNING)
+        )
+        store.append_event(
+            run_id,
+            RunEvent(
+                stage=Stage.IDLE,
+                status=RunStatus.SUCCEEDED,
+                answer={
+                    "question": question,
+                    "text": "GraphRAG 用 Neo4j 存储知识图谱 [1]",
+                    "citations": [{"chunkId": f"{DOC}#0", "index": 1}],
+                },
+            ),
+        )
+
+    from app.routers import chat as chat_mod
+
+    monkeypatch.setattr(chat_mod, "run_chat", _fake_run_chat)
+    client, _ = _client(ensured_schema)
+    resp = client.post("/api/chat", json={"question": "用什么存储知识图谱？"})
     assert resp.status_code == 200
-    body = resp.json()
-    assert "text" in body and body["text"]
-    assert "confidence" in body
-    # 答案应带引用，且 citation 字段是 camelCase
-    if body["citations"]:
-        c = body["citations"][0]
-        assert "chunkId" in c and "documentId" in c and "index" in c
-        assert c["chunkId"].startswith(DOC)
+    run_id = resp.json()["runId"]
+    events = client.get(f"/api/runs/{run_id}/events").json()
+    assert events[-1]["status"] == "succeeded"
+    assert events[-1]["answer"]["text"]
+    assert events[-1]["answer"]["citations"][0]["chunkId"] == f"{DOC}#0"
 
 
 def test_get_chunk_returns_text(ensured_schema):
     _seed_graph(ensured_schema)
-    client = _client(ensured_schema)
+    client, _ = _client(ensured_schema)
     resp = client.get(f"/api/chunks/{DOC}%230")  # %23 = '#'
     assert resp.status_code == 200
     body = resp.json()
@@ -102,6 +103,6 @@ def test_get_chunk_returns_text(ensured_schema):
 
 
 def test_get_missing_chunk_404(ensured_schema):
-    client = _client(ensured_schema)
+    client, _ = _client(ensured_schema)
     resp = client.get("/api/chunks/test_qa_doc%23999")
     assert resp.status_code == 404
