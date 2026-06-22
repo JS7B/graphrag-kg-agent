@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { Citation } from '../../types'
 import { DataValue } from '../ui'
 import styles from './CitationPanel.module.css'
@@ -8,20 +9,32 @@ interface CitationPanelProps {
 }
 
 export function CitationPanel({ citations, activeChunkId }: CitationPanelProps) {
+  const listRef = useRef<HTMLDivElement>(null)
+  const activeRef = useRef<HTMLElement>(null)
+
+  // 角标被点击 → activeChunkId 变化 → 滚动到对应来源条目。
+  // 仅在列表内滚动（block: 'nearest'），不牵动整页。
+  useEffect(() => {
+    if (!activeChunkId || !activeRef.current) return
+    activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [activeChunkId])
+
   if (citations.length === 0) {
     return <div className={styles.empty}>引用证据将在回答生成后显示</div>
   }
 
   return (
     <div className={styles.panel}>
-      <div className={styles.list}>
+      <div ref={listRef} className={styles.list}>
         {citations.map((citation) => {
           const isActive = citation.chunkId === activeChunkId
 
           return (
             <article
               key={`${citation.chunkId}-${citation.index}`}
+              ref={isActive ? activeRef : null}
               className={`${styles.entry} ${isActive ? styles.active : ''}`}
+              aria-current={isActive ? 'true' : undefined}
             >
               <sup className={styles.index}>[{citation.index}]</sup>
               <div className={styles.body}>
