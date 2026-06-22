@@ -1,22 +1,59 @@
-import type { RunEvent } from '../../types'
+import type { RunEvent, RunEventStatus } from '../../types'
+import { Chip, DataValue } from '../ui'
 import styles from './RunEventTimeline.module.css'
 
 interface RunEventTimelineProps {
   events: RunEvent[]
 }
 
-// 占位：时间倒序渲染事件，最新（当前阶段）高亮。与 PixelAgentStage 共享同一事件源。
+const statusLabel: Record<RunEventStatus, string> = {
+  started: 'started',
+  progress: 'progress',
+  done: 'done',
+  failed: 'failed',
+}
+
+const statusClass: Record<RunEventStatus, string> = {
+  started: styles.statusStarted,
+  progress: styles.statusProgress,
+  done: styles.statusDone,
+  failed: styles.statusFailed,
+}
+
 export function RunEventTimeline({ events }: RunEventTimelineProps) {
   if (events.length === 0) {
-    return <div className={styles.empty}>暂无运行事件（占位）</div>
+    return <div className={styles.empty}>暂无运行事件</div>
   }
+
   return (
     <ul className={styles.list}>
-      {[...events].reverse().map((e, i) => (
-        <li key={e.timestamp} className={i === 0 ? styles.current : styles.item}>
-          ▸ {e.stage} · {e.message}
-        </li>
-      ))}
+      {[...events].reverse().map((event, index) => {
+        const isCurrent = index === 0
+        const timeLabel = new Intl.DateTimeFormat('zh-CN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }).format(event.timestamp)
+
+        return (
+          <li
+            key={`${event.stage}-${event.status}-${event.timestamp}`}
+            className={`${styles.item} ${isCurrent ? styles.current : ''}`}
+          >
+            <span className={styles.marker} aria-hidden="true" />
+            <div className={styles.content}>
+              <div className={styles.topLine}>
+                <DataValue label="stage">{event.stage}</DataValue>
+                <Chip className={statusClass[event.status]}>{statusLabel[event.status]}</Chip>
+              </div>
+              <p className={styles.message}>{event.message}</p>
+              <time className={styles.time} dateTime={new Date(event.timestamp).toISOString()}>
+                {timeLabel}
+              </time>
+            </div>
+          </li>
+        )
+      })}
     </ul>
   )
 }

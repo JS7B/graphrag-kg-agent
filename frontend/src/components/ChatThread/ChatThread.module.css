@@ -1,0 +1,103 @@
+.thread {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.empty {
+  display: flex;
+  min-height: var(--space-8);
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.user {
+  align-items: flex-end;
+}
+
+.agent {
+  align-items: flex-start;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+.bubble {
+  max-width: 88%;
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+}
+
+.userBubble {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.agentCard {
+  width: 100%;
+  max-width: 92%;
+}
+
+.answerText {
+  color: var(--color-text-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+}
+
+.citationButton {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-1);
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-full);
+  padding: var(--space-0) var(--space-1);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  vertical-align: super;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.citationButton:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-active);
+  background: var(--color-accent-softer);
+}
+
+.agentFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
