@@ -8,6 +8,8 @@ import {
   Eyebrow,
   DataValue,
 } from '../../components/ui'
+import { PixelAgent } from '../../components/PixelAgent/PixelAgent'
+import { ALL_STAGES, stageMap } from '../../components/PixelAgent/stageMap'
 import styles from './StyleGallery.module.css'
 
 /**
@@ -157,6 +159,25 @@ export function StyleGallery() {
           <DataValue label="文档">attention-is-all-you-need.pdf</DataValue>
           <DataValue label="位置">p.4 §3.2</DataValue>
           <DataValue label="chunks">128</DataValue>
+        </div>
+      </Section>
+
+      {/* PixelAgent — 12 状态全览 */}
+      <Section eyebrow="Signature" title="像素档案员 · 12 状态">
+        <p className={styles.cardText}>
+          像素小人 22+ 层 CSS 分层，每个状态由真实 <code>RunEvent.stage</code> 驱动。
+          下方网格展示全部 12 个状态的动画（实时循环）。
+        </p>
+        <div className={styles.agentGrid}>
+          {ALL_STAGES.map((s) => (
+            <div key={s} className={styles.agentCell}>
+              <PixelAgent stage={s} />
+              <div className={styles.agentCap}>
+                <DataValue>{s}</DataValue>
+                <span className={styles.agentLabel}>{stageMap[s].label}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </Section>
     </div>

@@ -145,3 +145,40 @@
     padding: var(--space-5) var(--space-4) var(--space-7);
   }
 }
+
+/* 像素档案员 12 状态网格 */
+.agentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.agentCell {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  overflow: hidden;
+  min-height: 260px;
+}
+
+.agentCell > div:first-child {
+  /* PixelAgent 的 .wrap 撑满 cell 主体 */
+  flex: 1;
+}
+
+.agentCap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+}
+
+.agentLabel {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}

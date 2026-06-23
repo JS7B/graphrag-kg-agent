@@ -1,40 +1,777 @@
-/* idle：呼吸（上下浮动）。做出可见效果，作为 CSS 分层方案的样板。眨眼等细节留待后续。 */
-@keyframes breathe {
+/* ────────────────────────────────────────────────────────────
+   像素档案员 · 各 stage 动作定义（全局 CSS，非 module）
+   选择器：[data-stage="x"] [data-part="y"]（data-* 不被 hash，可稳定选中）
+   keyframe 一律 pa- 前缀。
+   颜色：靛紫#6366f1/#4338ca/#4338ca · 肤色#fcd9b6/#e8b894 · 头发#3f3a4d
+        纸#fffbeb/#fde68a · 灰#64748b/#94a3b8 · 深#1e293b · error红#b91c1c
+   ──────────────────────────────────────────────────────────── */
+
+/* ════════════════════════════════════════════════════════════
+   @keyframes 库
+   ════════════════════════════════════════════════════════════ */
+
+/* ── idle / deleting 共用：呼吸、蒸汽 ── */
+@keyframes pa-breathe {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
+  50%      { transform: translateY(-2px); }
+}
+@keyframes pa-sway-l {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(2deg); }
+}
+@keyframes pa-sway-r {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(-2deg); }
+}
+@keyframes pa-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  96%           { transform: scaleY(0.1); }
+}
+@keyframes pa-steam-a {
+  0%, 100% { transform: translateY(0);    opacity: 0.5; }
+  50%      { transform: translateY(-4px); opacity: 0.2; }
+}
+@keyframes pa-steam-b {
+  0%, 100% { transform: translateY(0);    opacity: 0.4; }
+  50%      { transform: translateY(-5px); opacity: 0.15; }
 }
 
-.anim-idle {
-  animation: breathe 2.4s ease-in-out infinite;
+/* ── uploading：搬运 ── */
+@keyframes pa-carry-walk {
+  0%, 100% { transform: translateX(-2px) rotate(-1deg); }
+  50%      { transform: translateX(2px)  rotate(1deg); }
+}
+@keyframes pa-carry-head {
+  0%, 100% { transform: translateY(-2px) rotate(-3deg); }
+  50%      { transform: translateY(-3px) rotate(3deg); }
+}
+@keyframes pa-carry-arm-l {
+  0%, 100% { transform: rotate(38deg); }
+  50%      { transform: rotate(42deg); }
+}
+@keyframes pa-carry-arm-r {
+  0%, 100% { transform: rotate(-42deg); }
+  50%      { transform: rotate(-38deg); }
+}
+@keyframes pa-carry-hand-l {
+  0%, 100% { transform: translate(4px, -14px); }
+  50%      { transform: translate(3px, -15px); }
+}
+@keyframes pa-carry-hand-r {
+  0%, 100% { transform: translate(-4px, -14px); }
+  50%      { transform: translate(-3px, -15px); }
+}
+@keyframes pa-carry-doc {
+  0%, 100% { transform: translate(-2px, -1px); }
+  50%      { transform: translate(2px,  -2px); }
 }
 
-/* 以下 11 个状态为占位：先复用一个轻微动作，保证类名存在、可被 stageMap 引用。
-   后续按 frontend/docs/pixel-agent-guide.md 的步骤逐个补全为对应拟物动作。 */
-@keyframes nudge {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-1px); }
+/* ── parsing：拆解 ── */
+@keyframes pa-parse-head {
+  0%, 100% { transform: translateY(1px)  rotate(3deg); }
+  50%      { transform: translateY(3px)  rotate(6deg); }
 }
-
-.anim-uploading,
-.anim-parsing,
-.anim-extracting,
-.anim-linking,
-.anim-indexing,
-.anim-searching,
-.anim-checking,
-.anim-writing,
-.anim-deleting,
-.anim-rebuilding {
-  animation: nudge 1.2s ease-in-out infinite;
+@keyframes pa-parse-arm-l {
+  0%, 100% { transform: rotate(20deg); }
+  50%      { transform: rotate(8deg); }
 }
-
-/* error：定格 + 轻微抖动，区别于进行中状态。 */
-@keyframes shake {
+@keyframes pa-parse-arm-r {
+  0%, 100% { transform: rotate(-8deg); }
+  50%      { transform: rotate(-20deg); }
+}
+@keyframes pa-parse-hand-l {
+  0%, 100% { transform: translateY(-3px); }
+  50%      { transform: translateY(-1px); }
+}
+@keyframes pa-parse-hand-r {
+  0%, 100% { transform: translateY(-1px); }
+  50%      { transform: translateY(-6px); }
+}
+@keyframes pa-parse-doc {
   0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-1px); }
-  75% { transform: translateX(1px); }
+  25%      { transform: translateX(-1px); }
+  50%      { transform: translateX(0); }
+  75%      { transform: translateX(1px); }
 }
 
-.anim-error {
-  animation: shake 0.5s ease-in-out 2;
+/* ── extracting：贴标签 ── */
+@keyframes pa-ext-head {
+  0%, 100% { transform: translateY(2px) rotate(2deg); }
+  50%      { transform: translateY(3px) rotate(4deg); }
+}
+@keyframes pa-ext-arm-r {
+  0%, 100%   { transform: rotate(-30deg); }
+  45%, 55%   { transform: rotate(-12deg); }
+}
+@keyframes pa-ext-hand-r {
+  0%, 100%   { transform: translateY(-10px); }
+  45%, 55%   { transform: translateY(-3px); }
+}
+@keyframes pa-ext-label {
+  0%, 35%    { opacity: 0; transform: translate(-6px, -16px) scale(0.6); }
+  45%        { opacity: 1; transform: translate(0, -8px)   scale(1); }
+  55%, 70%   { opacity: 1; transform: translate(0, -2px)   scale(1); }
+  100%       { opacity: 0; transform: translate(6px, 2px)   scale(0.6); }
+}
+
+/* ── linking：拉关系线 ── */
+@keyframes pa-arm-out-l {
+  0%, 100% { transform: rotate(0); }
+  50%      { transform: rotate(-45deg); }
+}
+@keyframes pa-arm-out-r {
+  0%, 100% { transform: rotate(0); }
+  50%      { transform: rotate(45deg); }
+}
+@keyframes pa-line-stretch {
+  0%, 100% { width: 6px; }
+  50%      { width: 40px; }
+}
+
+/* ── indexing：整理档案柜 ── */
+@keyframes pa-body-sway {
+  0%, 100% { transform: rotate(-3deg); }
+  50%      { transform: rotate(3deg); }
+}
+@keyframes pa-head-sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50%      { transform: rotate(2deg); }
+}
+@keyframes pa-arm-press-l {
+  0%, 100% { transform: rotate(0); }
+  50%      { transform: rotate(15deg); }
+}
+@keyframes pa-arm-press-r {
+  0%, 100% { transform: rotate(0); }
+  50%      { transform: rotate(-15deg); }
+}
+@keyframes pa-cabinet-slide {
+  0%       { transform: translateX(24px); opacity: 0; }
+  25%, 75% { transform: translateX(0);    opacity: 1; }
+  100%     { transform: translateX(24px); opacity: 0; }
+}
+
+/* ── searching：翻找 ── */
+@keyframes pa-lean {
+  0%, 100% { transform: rotate(4deg) translateY(0); }
+  50%      { transform: rotate(6deg) translateY(1px); }
+}
+@keyframes pa-search-nod {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(2px); }
+}
+@keyframes pa-flip-arm-l {
+  0%, 100% { transform: rotate(-8deg); }
+  50%      { transform: rotate(6deg); }
+}
+@keyframes pa-flip-arm-r {
+  0%, 100% { transform: rotate(8deg); }
+  50%      { transform: rotate(-6deg); }
+}
+@keyframes pa-flip-hand-l {
+  0%, 100% { bottom: 34px; }
+  50%      { bottom: 32px; }
+}
+@keyframes pa-flip-hand-r {
+  0%, 100% { bottom: 32px; }
+  50%      { bottom: 34px; }
+}
+@keyframes pa-doc-shuffle {
+  0%, 100% { transform: translateX(-90%); }
+  50%      { transform: translateX(-72%); }
+}
+
+/* ── checking：校对引用（放大镜）── */
+@keyframes pa-raise-r {
+  0%, 100% { transform: rotate(130deg); }
+  50%      { transform: rotate(134deg); }
+}
+@keyframes pa-mglass-hand {
+  0%, 100% { bottom: 92px; }
+  50%      { bottom: 90px; }
+}
+@keyframes pa-mglass {
+  0%, 100% { left: 56px; }
+  50%      { left: 64px; }
+}
+@keyframes pa-follow {
+  0%, 100% { transform: rotate(-3deg); }
+  50%      { transform: rotate(3deg); }
+}
+@keyframes pa-check-rest-l {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(2deg); }
+}
+
+/* ── writing：打字 ── */
+@keyframes pa-type-l {
+  0%   { bottom: 33px; }
+  50%  { bottom: 36px; }
+  100% { bottom: 33px; }
+}
+@keyframes pa-type-r {
+  0%   { bottom: 36px; }
+  50%  { bottom: 33px; }
+  100% { bottom: 36px; }
+}
+@keyframes pa-type-arm-l {
+  0%   { transform: rotate(3deg); }
+  50%  { transform: rotate(0deg); }
+  100% { transform: rotate(3deg); }
+}
+@keyframes pa-type-arm-r {
+  0%   { transform: rotate(-3deg); }
+  50%  { transform: rotate(0deg); }
+  100% { transform: rotate(-3deg); }
+}
+@keyframes pa-focus-down {
+  0%, 100% { transform: translateY(0) rotate(2deg); }
+  50%      { transform: translateY(1px) rotate(3deg); }
+}
+@keyframes pa-paper-line {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 4px; }
+}
+
+/* ── deleting：碎纸 ── */
+@keyframes pa-feed-l {
+  0%, 100% { transform: rotate(8deg); }
+  50%      { transform: rotate(30deg); }
+}
+@keyframes pa-feed-r {
+  0%, 100% { transform: rotate(-8deg); }
+  50%      { transform: rotate(-30deg); }
+}
+@keyframes pa-feed-hand-l {
+  0%, 100% { transform: translate(2px, 0); }
+  50%      { transform: translate(9px, -2px); }
+}
+@keyframes pa-feed-hand-r {
+  0%, 100% { transform: translate(-2px, 0); }
+  50%      { transform: translate(-9px, -2px); }
+}
+@keyframes pa-delete-nod {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(1px) rotate(5deg); }
+}
+@keyframes pa-shred-paper {
+  0%   { transform: translate(-50%, -22px); opacity: 0; }
+  10%  { transform: translate(-50%, -22px); opacity: 1; }
+  68%  { transform: translate(-50%, 2px);   opacity: 1; }
+  80%  { transform: translate(-50%, 16px);  opacity: 0; }
+  100% { transform: translate(-50%, 16px);  opacity: 0; }
+}
+
+/* ── rebuilding：复印重排 ── */
+@keyframes pa-hold-l {
+  0%, 100% { transform: rotate(18deg); }
+  50%      { transform: rotate(22deg); }
+}
+@keyframes pa-hold-r {
+  0%, 100% { transform: rotate(-18deg); }
+  50%      { transform: rotate(-22deg); }
+}
+@keyframes pa-hold-hand-l {
+  0%, 100% { transform: translate(6px, 0); }
+  50%      { transform: translate(7px, -1px); }
+}
+@keyframes pa-hold-hand-r {
+  0%, 100% { transform: translate(-6px, 0); }
+  50%      { transform: translate(-7px, -1px); }
+}
+@keyframes pa-copy-spin {
+  0%   { transform: translate(-50%, 0) rotate(0deg); }
+  100% { transform: translate(-50%, 0) rotate(360deg); }
+}
+
+/* ── error：惊慌 ── */
+@keyframes pa-shake {
+  0%, 56%, 100% { transform: translateX(0); }
+  8%, 24%, 40%  { transform: translateX(-2px); }
+  16%, 32%, 48% { transform: translateX(2px); }
+}
+@keyframes pa-arm-shock-l {
+  0%, 100% { transform: rotate(0); }
+  50%      { transform: rotate(-25deg); }
+}
+@keyframes pa-arm-shock-r {
+  0%, 100% { transform: rotate(0); }
+  50%      { transform: rotate(25deg); }
+}
+@keyframes pa-eye-pop {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.2); }
+}
+@keyframes pa-brow-raise {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+@keyframes pa-bang {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   各 stage 规则
+   ════════════════════════════════════════════════════════════ */
+
+/* ── idle：待命（呼吸 + 微摆 + 偶发眨眼 + 蒸汽）── */
+[data-stage="idle"] [data-part="agent"] {
+  animation: pa-breathe 3s ease-in-out infinite;
+}
+[data-stage="idle"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-sway-l 4s ease-in-out infinite;
+}
+[data-stage="idle"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-sway-r 4s ease-in-out infinite;
+}
+[data-stage="idle"] [data-part="eyeL"],
+[data-stage="idle"] [data-part="eyeR"] {
+  transform-origin: center;
+  animation: pa-blink 4.5s ease-in-out infinite;
+}
+[data-stage="idle"] [data-part="propDesk"]  { opacity: 1; }
+[data-stage="idle"] [data-part="propCup"]   { opacity: 1; }
+[data-stage="idle"] [data-part="propSteam"] { opacity: 1; }
+[data-stage="idle"] [data-part="propSteam"]::before {
+  content: "";
+  position: absolute;
+  left: 1px; bottom: 0;
+  width: 3px; height: 3px;
+  background: rgba(226, 232, 240, 0.85);
+  border-radius: 50%;
+  animation: pa-steam-a 2.4s ease-in-out infinite;
+}
+[data-stage="idle"] [data-part="propSteam"]::after {
+  content: "";
+  position: absolute;
+  left: 5px; bottom: 1px;
+  width: 3px; height: 3px;
+  background: rgba(226, 232, 240, 0.75);
+  border-radius: 50%;
+  animation: pa-steam-b 2.4s ease-in-out infinite;
+  animation-delay: -1.2s;
+}
+
+/* ── uploading：搬运文档 ── */
+[data-stage="uploading"] [data-part="agent"] {
+  animation: pa-carry-walk 1s ease-in-out infinite;
+}
+[data-stage="uploading"] [data-part="head"] {
+  animation: pa-carry-head 1s ease-in-out infinite;
+}
+[data-stage="uploading"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-carry-arm-l 1s ease-in-out infinite;
+}
+[data-stage="uploading"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-carry-arm-r 1s ease-in-out infinite;
+}
+[data-stage="uploading"] [data-part="handL"] {
+  animation: pa-carry-hand-l 1s ease-in-out infinite;
+}
+[data-stage="uploading"] [data-part="handR"] {
+  animation: pa-carry-hand-r 1s ease-in-out infinite;
+}
+[data-stage="uploading"] [data-part="propDoc"] {
+  opacity: 1;
+  animation: pa-carry-doc 1s ease-in-out infinite;
+}
+
+/* ── parsing：拆文件 ── */
+[data-stage="parsing"] [data-part="head"] {
+  animation: pa-parse-head 0.9s ease-in-out infinite;
+}
+[data-stage="parsing"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-parse-arm-l 0.9s ease-in-out infinite;
+}
+[data-stage="parsing"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-parse-arm-r 0.9s ease-in-out infinite;
+}
+[data-stage="parsing"] [data-part="handL"] {
+  animation: pa-parse-hand-l 0.9s ease-in-out infinite;
+}
+[data-stage="parsing"] [data-part="handR"] {
+  animation: pa-parse-hand-r 0.9s ease-in-out infinite;
+}
+[data-stage="parsing"] [data-part="propDoc"] {
+  opacity: 1;
+  animation: pa-parse-doc 0.9s ease-in-out infinite;
+}
+
+/* ── extracting：贴实体标签 ── */
+[data-stage="extracting"] [data-part="head"] {
+  animation: pa-ext-head 1.1s ease-in-out infinite;
+}
+[data-stage="extracting"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-ext-arm-r 1.1s ease-in-out infinite;
+}
+[data-stage="extracting"] [data-part="handR"] {
+  animation: pa-ext-hand-r 1.1s ease-in-out infinite;
+}
+[data-stage="extracting"] [data-part="heldProp"] {
+  opacity: 1;
+  animation: pa-ext-label 1.1s ease-in-out infinite;
+}
+
+/* ── linking：拉关系线 ── */
+[data-stage="linking"] [data-part="armL"],
+[data-stage="linking"] [data-part="handL"] {
+  transform-origin: top center;
+  animation: pa-arm-out-l 1.4s ease-in-out infinite;
+}
+[data-stage="linking"] [data-part="armR"],
+[data-stage="linking"] [data-part="handR"] {
+  transform-origin: top center;
+  animation: pa-arm-out-r 1.4s ease-in-out infinite;
+}
+[data-stage="linking"] [data-part="heldProp"] {
+  opacity: 1;
+  left: 44px;
+  bottom: 36px;
+  width: 6px;
+  height: 2px;
+  background: #6366f1;
+  transform: translateX(-50%);
+  animation: pa-line-stretch 1.4s ease-in-out infinite;
+}
+
+/* ── indexing：整理档案柜 ── */
+[data-stage="indexing"] [data-part="body"],
+[data-stage="indexing"] [data-part="bodyShade"] {
+  transform-origin: bottom center;
+  animation: pa-body-sway 1.6s ease-in-out infinite;
+}
+[data-stage="indexing"] [data-part="head"] {
+  transform-origin: bottom center;
+  animation: pa-head-sway 1.6s ease-in-out infinite;
+}
+[data-stage="indexing"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-arm-press-l 1.6s ease-in-out infinite;
+}
+[data-stage="indexing"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-arm-press-r 1.6s ease-in-out infinite;
+}
+[data-stage="indexing"] [data-part="heldProp"] {
+  opacity: 1;
+  left: 70px;
+  bottom: 38px;
+  width: 16px;
+  height: 24px;
+  background-color: #4338ca;
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0, transparent 5px, #3f3a4d 5px, #3f3a4d 6px
+  );
+  border: 1px solid #3f3a4d;
+  transform: translateX(24px);
+  animation: pa-cabinet-slide 1.6s ease-in-out infinite;
+}
+
+/* ── searching：翻找文件 ── */
+[data-stage="searching"] [data-part="agent"] {
+  transform-origin: bottom center;
+  animation: pa-lean 0.8s ease-in-out infinite;
+}
+[data-stage="searching"] [data-part="head"] {
+  animation: pa-search-nod 0.8s ease-in-out infinite;
+}
+[data-stage="searching"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-flip-arm-l 0.8s ease-in-out infinite;
+}
+[data-stage="searching"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-flip-arm-r 0.8s ease-in-out infinite;
+}
+[data-stage="searching"] [data-part="handL"] {
+  animation: pa-flip-hand-l 0.8s ease-in-out infinite;
+}
+[data-stage="searching"] [data-part="handR"] {
+  animation: pa-flip-hand-r 0.8s ease-in-out infinite;
+}
+[data-stage="searching"] [data-part="propDoc"] {
+  opacity: 1;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  animation: pa-doc-shuffle 0.8s ease-in-out infinite;
+}
+[data-stage="searching"] [data-part="propDoc"]::before {
+  content: "";
+  position: absolute;
+  inset: -3px 0 0 5px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 1px;
+  z-index: -1;
+}
+[data-stage="searching"] [data-part="propDoc"]::after {
+  content: "";
+  position: absolute;
+  inset: -1px 0 0 -5px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 1px;
+  z-index: -1;
+}
+
+/* ── checking：校对引用（放大镜）── */
+[data-stage="checking"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-raise-r 1.5s ease-in-out infinite;
+}
+[data-stage="checking"] [data-part="handR"] {
+  animation: pa-mglass-hand 1.5s ease-in-out infinite;
+}
+[data-stage="checking"] [data-part="heldProp"] {
+  opacity: 1;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0369a1;
+  border-radius: 50%;
+  background: rgba(186, 230, 253, 0.35);
+  bottom: 94px;
+  left: 56px;
+  z-index: 5;
+  animation: pa-mglass 1.5s ease-in-out infinite;
+}
+[data-stage="checking"] [data-part="heldProp"]::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  height: 9px;
+  background: #0369a1;
+  border-radius: 2px;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  transform-origin: top center;
+}
+[data-stage="checking"] [data-part="head"] {
+  transform-origin: center;
+  animation: pa-follow 1.5s ease-in-out infinite;
+}
+[data-stage="checking"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-check-rest-l 2s ease-in-out infinite;
+}
+
+/* ── writing：打字输出 ── */
+[data-stage="writing"] [data-part="handL"] {
+  animation: pa-type-l 0.2s steps(2) infinite;
+}
+[data-stage="writing"] [data-part="handR"] {
+  animation: pa-type-r 0.2s steps(2) infinite;
+}
+[data-stage="writing"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-type-arm-l 0.2s steps(2) infinite;
+}
+[data-stage="writing"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-type-arm-r 0.2s steps(2) infinite;
+}
+[data-stage="writing"] [data-part="head"] {
+  transform-origin: center;
+  animation: pa-focus-down 1.2s ease-in-out infinite;
+}
+[data-stage="writing"] [data-part="propDoc"] {
+  opacity: 1;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 10px;
+  background: #94a3b8;
+  border: 1px solid #475569;
+  border-radius: 2px;
+}
+[data-stage="writing"] [data-part="propDoc"]::before {
+  content: "";
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  background: repeating-linear-gradient(180deg, #fffbeb 0 3px, #d4a85e 3px 4px);
+  border: 1px solid #fde68a;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  animation: pa-paper-line 0.25s steps(1, end) infinite;
+}
+[data-stage="writing"] [data-part="propDoc"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 22px;
+  height: 3px;
+  background: #475569;
+  border-radius: 1px;
+  transform: translateX(-50%);
+}
+
+/* ── deleting：碎纸 ── */
+[data-stage="deleting"] [data-part="agent"] {
+  animation: pa-breathe 3s ease-in-out infinite;
+}
+[data-stage="deleting"] [data-part="propDesk"] { opacity: 1; }
+[data-stage="deleting"] [data-part="head"] {
+  transform-origin: bottom center;
+  animation: pa-delete-nod 2.4s ease-in-out infinite;
+}
+[data-stage="deleting"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-feed-l 1.2s ease-in-out infinite;
+}
+[data-stage="deleting"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-feed-r 1.2s ease-in-out infinite;
+}
+[data-stage="deleting"] [data-part="handL"] {
+  animation: pa-feed-hand-l 1.2s ease-in-out infinite;
+}
+[data-stage="deleting"] [data-part="handR"] {
+  animation: pa-feed-hand-r 1.2s ease-in-out infinite;
+}
+[data-stage="deleting"] [data-part="heldProp"] {
+  opacity: 1;
+  left: 32px;
+  bottom: 4px;
+  width: 32px;
+  height: 30px;
+  background: linear-gradient(180deg, #475569 0 55%, #334155 100%);
+  border: 2px solid #1e293b;
+  border-radius: 3px;
+  box-shadow: inset 0 -5px 0 rgba(15, 23, 42, 0.35),
+              inset 0 2px 0 rgba(255, 255, 255, 0.06);
+}
+[data-stage="deleting"] [data-part="heldProp"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 6px;
+  background: repeating-linear-gradient(90deg, #94a3b8 0 3px, #1e293b 3px 5px);
+  border-radius: 1px;
+  box-shadow: 0 1px 0 #0f172a;
+}
+[data-stage="deleting"] [data-part="heldProp"]::after {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 10px;
+  height: 14px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 1px;
+  animation: pa-shred-paper 1.2s cubic-bezier(0.42, 0, 1, 1) infinite;
+}
+
+/* ── rebuilding：复印重排 ── */
+[data-stage="rebuilding"] [data-part="agent"] {
+  animation: pa-breathe 3s ease-in-out infinite;
+}
+[data-stage="rebuilding"] [data-part="propDesk"] { opacity: 1; }
+[data-stage="rebuilding"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-hold-l 2s ease-in-out infinite;
+}
+[data-stage="rebuilding"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-hold-r 2s ease-in-out infinite;
+}
+[data-stage="rebuilding"] [data-part="handL"] {
+  animation: pa-hold-hand-l 2s ease-in-out infinite;
+}
+[data-stage="rebuilding"] [data-part="handR"] {
+  animation: pa-hold-hand-r 2s ease-in-out infinite;
+}
+[data-stage="rebuilding"] [data-part="heldProp"] {
+  opacity: 1;
+  left: 30px;
+  bottom: 4px;
+  width: 36px;
+  height: 16px;
+  background: linear-gradient(180deg, #94a3b8 0 40%, #64748b 100%);
+  border: 2px solid #475569;
+  border-radius: 3px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.25),
+              inset 0 -3px 0 rgba(15, 23, 42, 0.25);
+}
+[data-stage="rebuilding"] [data-part="heldProp"]::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 7px;
+  background: linear-gradient(180deg, #1e293b, #0f172a);
+  border: 1px solid #334155;
+  border-radius: 2px;
+}
+[data-stage="rebuilding"] [data-part="heldProp"]::after {
+  content: "";
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 1px;
+  animation: pa-copy-spin 2s linear infinite;
+}
+
+/* ── error：查看错误 ── */
+[data-stage="error"] {
+  animation: pa-shake 1.6s ease-in-out infinite;
+}
+[data-stage="error"] [data-part="armL"] {
+  transform-origin: top center;
+  animation: pa-arm-shock-l 0.4s ease-in-out infinite;
+}
+[data-stage="error"] [data-part="armR"] {
+  transform-origin: top center;
+  animation: pa-arm-shock-r 0.4s ease-in-out infinite;
+}
+[data-stage="error"] [data-part="eyeL"],
+[data-stage="error"] [data-part="eyeR"] {
+  transform-origin: center;
+  animation: pa-eye-pop 0.4s ease-in-out infinite;
+}
+[data-stage="error"] [data-part="browL"],
+[data-stage="error"] [data-part="browR"] {
+  animation: pa-brow-raise 0.4s ease-in-out infinite;
+}
+[data-stage="error"] [data-part="heldProp"] {
+  opacity: 1;
+  left: 38px;
+  bottom: 110px;
+  width: 12px;
+  height: 12px;
+  background: #b91c1c;
+  animation: pa-bang 0.5s steps(1, end) infinite;
+}
+[data-stage="error"] [data-part="heldProp"]::before {
+  content: "!";
+  display: block;
+  width: 100%;
+  color: #fff;
+  font-family: "Courier New", monospace;
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 12px;
+  text-align: center;
 }
