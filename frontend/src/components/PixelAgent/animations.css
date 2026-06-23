@@ -169,12 +169,12 @@
   50%      { transform: rotate(-6deg); }
 }
 @keyframes pa-flip-hand-l {
-  0%, 100% { bottom: 34px; }
-  50%      { bottom: 32px; }
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
 }
 @keyframes pa-flip-hand-r {
-  0%, 100% { bottom: 32px; }
-  50%      { bottom: 34px; }
+  0%, 100% { transform: translateY(-2px); }
+  50%      { transform: translateY(0); }
 }
 @keyframes pa-doc-shuffle {
   0%, 100% { transform: translateX(-90%); }
@@ -203,16 +203,14 @@
   50%      { transform: rotate(2deg); }
 }
 
-/* ── writing：打字 ── */
+/* ── writing：打字（手在臂末端小幅敲击，bottom 相对手臂）── */
 @keyframes pa-type-l {
-  0%   { bottom: 33px; }
-  50%  { bottom: 36px; }
-  100% { bottom: 33px; }
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
 }
 @keyframes pa-type-r {
-  0%   { bottom: 36px; }
-  50%  { bottom: 33px; }
-  100% { bottom: 36px; }
+  0%, 100% { transform: translateY(-2px); }
+  50%      { transform: translateY(0); }
 }
 @keyframes pa-type-arm-l {
   0%   { transform: rotate(3deg); }
@@ -523,12 +521,10 @@
 }
 
 /* ── checking：校对引用（放大镜）── */
+/* 右臂整体举起转面前，手嵌套在臂末端自然跟随（不再独立上移） */
 [data-stage="checking"] [data-part="armR"] {
   transform-origin: top center;
   animation: pa-raise-r 1.5s ease-in-out infinite;
-}
-[data-stage="checking"] [data-part="handR"] {
-  animation: pa-mglass-hand 1.5s ease-in-out infinite;
 }
 [data-stage="checking"] [data-part="heldProp"] {
   opacity: 1;

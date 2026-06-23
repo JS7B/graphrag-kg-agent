@@ -64,22 +64,31 @@ export function PixelAgent({ stage, devControls = false }: PixelAgentProps) {
           <div className={styles.collar} data-part="collar" />
           <div className={styles.neck} data-part="neck" />
 
-          {/* 双臂 + 手（独立动画单元，很多状态要让手臂举起/摆动） */}
-          <div className={`${styles.arm} ${styles.armL}`} data-part="armL" />
-          <div className={`${styles.arm} ${styles.armR}`} data-part="armR" />
-          <div className={`${styles.hand} ${styles.handL}`} data-part="handL" />
-          <div className={`${styles.hand} ${styles.handR}`} data-part="handR" />
+          {/* 双臂：手嵌套在臂末端，手臂 rotate 时手自动跟随（修复臂/手脱节） */}
+          <div className={`${styles.arm} ${styles.armL}`} data-part="armL">
+            <div className={styles.hand} data-part="handL" />
+          </div>
+          <div className={`${styles.arm} ${styles.armR}`} data-part="armR">
+            <div className={styles.hand} data-part="handR" />
+          </div>
 
           {/* 头部 + 五官（头部整体可动，五官各自可动） */}
           <div className={styles.head} data-part="head">
             <div className={styles.headHi} />
             <div className={styles.headShade} />
+            {/* 发型：利落偏分（主体 + 偏分缝 + 左厚块 + 高光 + 鬓角） */}
             <div className={styles.hair}>
+              <div className={styles.hairPart} />
+              <div className={styles.hairTuft} />
               <div className={styles.hairHi} />
             </div>
+            <div className={`${styles.sideburn} ${styles.sideburnL}`} />
+            <div className={`${styles.sideburn} ${styles.sideburnR}`} />
             <div className={`${styles.brow} ${styles.browL}`} data-part="browL" />
             <div className={`${styles.brow} ${styles.browR}`} data-part="browR" />
+            {/* 方框黑框眼镜：两片 + 鼻梁桥（桥是辨识度关键） */}
             <div className={styles.glasses} />
+            <div className={styles.glassesBridge} />
             <div className={styles.glassGlint} />
             <div className={`${styles.eye} ${styles.eyeL}`} data-part="eyeL" />
             <div className={`${styles.eye} ${styles.eyeR}`} data-part="eyeR" />
