@@ -8,6 +8,8 @@ import {
   Eyebrow,
   DataValue,
 } from '../../components/ui'
+import { AgentRoom } from '../../components/AgentRoom/AgentRoom'
+import { ALL_STAGES, sceneMap } from '../../components/AgentRoom/sceneMap'
 import styles from './StyleGallery.module.css'
 
 /**
@@ -157,6 +159,25 @@ export function StyleGallery() {
           <DataValue label="文档">attention-is-all-you-need.pdf</DataValue>
           <DataValue label="位置">p.4 §3.2</DataValue>
           <DataValue label="chunks">128</DataValue>
+        </div>
+      </Section>
+
+      {/* AgentRoom — 12 状态全览 */}
+      <Section eyebrow="Signature" title="像素档案员 · 12 状态">
+        <p className={styles.cardText}>
+          深紫调像素小房间：极简悬浮色块小人 + 头顶气泡 + 周围场景道具。
+          每个状态由真实 <code>RunEvent.stage</code> 驱动，下方网格展示全部 12 个状态。
+        </p>
+        <div className={styles.agentGrid}>
+          {ALL_STAGES.map((s) => (
+            <div key={s} className={styles.agentCell}>
+              <AgentRoom stage={s} />
+              <div className={styles.agentCap}>
+                <DataValue>{s}</DataValue>
+                <span className={styles.agentLabel}>{sceneMap[s].label}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </Section>
     </div>

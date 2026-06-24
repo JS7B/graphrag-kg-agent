@@ -1,0 +1,280 @@
+/* ────────────────────────────────────────────────────────────
+   AgentRoom · 12 状态场景道具显隐 + 动效（全局 CSS，非 module）
+   选择器：[data-stage="x"] .p-xxx { opacity: 1; ... }
+   道具 DOM 常驻（AgentRoom.tsx 里写死全局 class 名，不经 styles hash），
+   CSS 按 data-stage 显隐——避免切换重建跳变。
+   ──────────────────────────────────────────────────────────── */
+
+/* 道具基础：默认隐藏，按 stage 显示。单个道具的定位/外观在各自 .p-xxx 里。 */
+.prop {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+/* ── 默认全部隐藏，按 stage 显示对应道具 ── */
+.canvas[data-stage="uploading"] .p-upload,
+.canvas[data-stage="parsing"] .p-doc,
+.canvas[data-stage="extracting"] .p-tag,
+.canvas[data-stage="linking"] .p-link,
+.canvas[data-stage="indexing"] .p-cabinet,
+.canvas[data-stage="searching"] .p-glass,
+.canvas[data-stage="checking"] .p-glass,
+.canvas[data-stage="writing"] .p-type,
+.canvas[data-stage="deleting"] .p-shred,
+.canvas[data-stage="rebuilding"] .p-copy,
+.canvas[data-stage="error"] .p-err {
+  opacity: 1;
+}
+
+/* uploading：文档从右侧飞入（沿桌面方向）*/
+.p-upload {
+  right: 30px;
+  bottom: 80px;
+  width: 18px;
+  height: 13px;
+  background: var(--prop-doc);
+  border: 1px solid var(--prop-doc-line);
+  border-radius: 1px;
+  animation: ar-fly-in 1s ease-in infinite;
+}
+@keyframes ar-fly-in {
+  0% { right: 0; opacity: 0; }
+  30% { opacity: 1; }
+  100% { right: 120px; opacity: 0; }
+}
+
+/* parsing：文档在面前翻页（放小人左前方，不挡主体）*/
+.p-doc {
+  left: 22%;
+  bottom: 78px;
+  width: 22px;
+  height: 16px;
+  background: var(--prop-doc);
+  border: 1px solid var(--prop-doc-line);
+  border-radius: 1px;
+  animation: ar-flip 0.6s linear infinite;
+}
+@keyframes ar-flip {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.2); }
+}
+
+/* extracting：标签贴纸从文档弹出 */
+.p-tag {
+  left: 26%;
+  bottom: 94px;
+  width: 13px;
+  height: 9px;
+  background: var(--room-accent);
+  border-radius: 1px;
+  animation: ar-pop 0.8s ease-out infinite;
+}
+@keyframes ar-pop {
+  0% { transform: scale(0) translateY(0); opacity: 0; }
+  40% { transform: scale(1) translateY(-8px); opacity: 1; }
+  100% { transform: scale(1) translateY(-16px); opacity: 0; }
+}
+
+/* linking：两节点间连线生长（横向，在小人上方）*/
+.p-link {
+  left: 28%;
+  bottom: 88px;
+  width: 44px;
+  height: 2px;
+  background: var(--room-accent);
+  transform-origin: left;
+  animation: ar-grow 1s ease-in-out infinite;
+}
+.p-link::before,
+.p-link::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--room-accent);
+}
+.p-link::before { left: -3px; }
+.p-link::after { right: -3px; }
+@keyframes ar-grow {
+  0% { transform: scaleX(0); }
+  50% { transform: scaleX(1); }
+  100% { transform: scaleX(0); }
+}
+
+/* indexing：档案柜（放小人右侧，抽屉开合）——修已知问题1：不挡小人 */
+.p-cabinet {
+  right: 12px;
+  bottom: 54px;
+  width: 30px;
+  height: 40px;
+  background: var(--prop-metal-dark);
+  border: 1px solid var(--room-line);
+  border-radius: 2px;
+}
+.p-cabinet::before,
+.p-cabinet::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  width: 24px;
+  height: 10px;
+  background: var(--prop-metal);
+  border-radius: 1px;
+}
+.p-cabinet::before { top: 4px; animation: ar-drawer 1.2s ease-in-out infinite; }
+.p-cabinet::after { top: 18px; animation: ar-drawer 1.2s ease-in-out 0.3s infinite; }
+@keyframes ar-drawer {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(5px); }
+}
+
+/* searching / checking：放大镜（放小人左前方扫描，不挡主体）*/
+.p-glass {
+  left: 24%;
+  bottom: 82px;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--room-accent);
+  border-radius: 50%;
+  background: rgba(167, 139, 250, 0.12);
+  animation: ar-scan 1.6s ease-in-out infinite;
+}
+.p-glass::after {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  right: -3px;
+  width: 3px;
+  height: 9px;
+  background: var(--room-accent);
+  transform: rotate(-45deg);
+}
+@keyframes ar-scan {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(16px) translateY(4px); }
+}
+
+/* writing：纸条从打字机吐出（小人左前方）*/
+.p-type {
+  left: 24%;
+  bottom: 74px;
+  width: 20px;
+  height: 6px;
+  background: var(--prop-doc);
+  border: 1px solid var(--prop-doc-line);
+  animation: ar-emit 1s ease-out infinite;
+}
+@keyframes ar-emit {
+  0% { height: 2px; opacity: 0.5; }
+  100% { height: 18px; opacity: 1; }
+}
+
+/* deleting：碎纸机（放小人右侧，不挡主体）——修已知问题1 */
+.p-shred {
+  right: 14px;
+  bottom: 54px;
+  width: 34px;
+  height: 16px;
+  background: var(--prop-metal-dark);
+  border: 1px solid var(--room-line);
+  border-radius: 2px;
+}
+/* 顶部入口吸入的纸 */
+.p-shred::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 11px;
+  background: var(--prop-doc);
+  border: 1px solid var(--prop-doc-line);
+  animation: ar-suck 0.9s ease-in infinite;
+}
+@keyframes ar-suck {
+  0% { top: -12px; opacity: 1; }
+  100% { top: 2px; opacity: 0; }
+}
+/* 底部碎屑掉落 */
+.p-shred::after {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  width: 2px;
+  height: 6px;
+  background: var(--prop-doc);
+  box-shadow: -6px 0 var(--prop-doc), 6px 1px var(--prop-doc),
+    -3px 2px var(--prop-doc), 3px 0 var(--prop-doc);
+  animation: ar-fall 0.9s linear infinite;
+}
+@keyframes ar-fall {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(8px); }
+}
+
+/* rebuilding：复印机（放小人右侧）*/
+.p-copy {
+  right: 12px;
+  bottom: 54px;
+  width: 32px;
+  height: 28px;
+  background: var(--prop-metal-dark);
+  border: 1px solid var(--room-line);
+  border-radius: 2px;
+}
+/* 顶部扫描光上下扫 */
+.p-copy::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 4px;
+  width: 24px;
+  height: 4px;
+  background: var(--room-accent);
+  animation: ar-scan-light 1.2s ease-in-out infinite;
+}
+@keyframes ar-scan-light {
+  0%, 100% { top: 6px; opacity: 0.4; }
+  50% { top: 18px; opacity: 1; }
+}
+/* 底部吐出复制的纸 */
+.p-copy::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 7px;
+  width: 18px;
+  height: 9px;
+  background: var(--prop-doc);
+  border: 1px solid var(--prop-doc-line);
+  animation: ar-eject 1.2s ease-out infinite;
+}
+@keyframes ar-eject {
+  0% { bottom: 4px; opacity: 0; }
+  100% { bottom: -8px; opacity: 1; }
+}
+
+/* error：红色警示光 + 小人抖动 */
+.p-err {
+  inset: 0;
+  background: radial-gradient(circle at 50% 60%, rgba(248, 113, 113, 0.2), transparent 60%);
+  animation: ar-err-flash 0.5s ease-in-out 3;
+}
+@keyframes ar-err-flash {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+/* error 状态小人抖动（覆盖 busy 动画）*/
+.canvas[data-stage="error"] .dude {
+  animation: ar-shake 0.3s ease-in-out 4;
+}
+@keyframes ar-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}

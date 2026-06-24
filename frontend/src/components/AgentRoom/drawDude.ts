@@ -1,0 +1,71 @@
+/**
+ * 像素小人 · box-shadow 像素法 + 编译器
+ *
+ * 原理：把 8×8 网格图案（易读的字符串数组）编译成一串 box-shadow 坐标，
+ * 渲染时用 1 个 div + 多层 box-shadow 画全部色块。
+ *
+ * 为什么这么做（折中）：
+ * - 纯 box-shadow 像素法性能好（1 个 div），但手写坐标极难维护。
+ * - 用 pattern 数组做单一数据源：改图案/配色只改下面的 PATTERN/COLOR（易读），
+ *   box-shadow 字符串由 compile() 自动生成（运行一次，结果存常量）。
+ *
+ * 画法以 ZCodeRoom 原型 drawDude() 为基准（紫发/肤/腿/鞋），
+ * 本项目差异：卫衣改蓝靛紫主色（呼应 --color-accent）+ 加方框眼镜（档案员人设）。
+ */
+
+// 配色（对齐 ZCodeRoom COL，身体改本项目蓝靛紫）。
+// 字符 → CSS 色：改色只改这里。
+const COLOR: Record<string, string> = {
+  h: '#5e4f8e', // 头发（紫）
+  s: '#ffd9a8', // 肤色
+  e: '#222222', // 眼睛/瞳
+  g: '#2a2540', // 眼镜框（深紫黑，档案员辨识特征）
+  b: '#5b6ee1', // 卫衣主色（蓝靛紫，呼应 --color-accent）
+  B: '#6ec3ff', // 卫衣暗部/高光（亮蓝）
+  l: '#2a2540', // 腿
+}
+
+// 8列×8行 像素图案。字符：. 透明 | 其余见 COLOR。
+// 第4行 .gseseg. —— g 眼镜框框住 e 眼睛（左 g-s-e-s-e-g 右）。
+const PATTERN: string[] = [
+  '..hhhh..',
+  '.hhhhhh.',
+  '.hssssh.', // 额发 + 脸
+  '.gseseg.', // 眼镜框 + 眼（g 框住 e）
+  '..ssss..', // 脸下半（鼻嘴留白）
+  '.bbBBbb.', // 卫衣（右半 B 暗部，造体积）
+  '.bbBBbb.',
+  '.ll..ll.', // 腿（悬浮，短腿）
+]
+
+// 每格像素尺寸：宽 4 × 高 4.5 → 整体约 32×36。
+export const DUDE_W = 32
+export const DUDE_H = 36
+const GRID_W = 4
+const GRID_H = 4.5
+
+/**
+ * 把 pattern 编译成 box-shadow 字符串。
+ * 每个非透明格变成一个 "{x}px {y}px 0 0 {color}" 投影（spread 0、模糊 0 = 硬边像素）。
+ *
+ * 注意：box-shadow 相对元素自身定位，第一格（0,0）的色块用元素 background 画最省，
+ * 其余用 box-shadow 偏移。这里统一用 box-shadow（background 留给伪元素或保持透明），
+ * 为的是眨眼等"换色"场景只改 boxShadow 字符串即可。
+ */
+function compile(pattern: string[], color: Record<string, string>, gw: number, gh: number): string {
+  const shadows: string[] = []
+  pattern.forEach((row, y) => {
+    const rowChars = row.split('')
+    for (let x = 0; x < rowChars.length; x++) {
+      const ch = rowChars[x]
+      const c = color[ch]
+      if (!c) continue
+      // box-shadow 坐标：向右偏移 x*gw，向下偏移 y*gh。
+      shadows.push(`${(x * gw).toFixed(2)}px ${(y * gh).toFixed(2)}px 0 0 ${c}`)
+    }
+  })
+  return shadows.join(', ')
+}
+
+// 编译结果（模块级常量，启动时算一次，渲染时直接用）。
+export const DUDE_SHADOW = compile(PATTERN, COLOR, GRID_W, GRID_H)

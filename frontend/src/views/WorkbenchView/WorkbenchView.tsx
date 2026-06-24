@@ -4,7 +4,7 @@ import { ChatThread } from '../../components/ChatThread/ChatThread'
 import { ChatComposer } from '../../components/ChatComposer/ChatComposer'
 import { CitationPanel } from '../../components/CitationPanel/CitationPanel'
 import { RunEventTimeline } from '../../components/RunEventTimeline/RunEventTimeline'
-import { PixelAgent } from '../../components/PixelAgent/PixelAgent'
+import { AgentRoom } from '../../components/AgentRoom/AgentRoom'
 import { Panel } from '../../components/ui'
 import { useRunEvents } from '../../hooks/useRunEvents'
 import type { ChatMessage, Citation } from '../../types'
@@ -85,11 +85,12 @@ export function WorkbenchView() {
         </div>
       </section>
       <aside className={styles.sideCol}>
-        <Panel className={styles.stagePanel} eyebrow="Agent Stage" title="像素档案员">
-          <div className={styles.stageBody}>
-            <PixelAgent stage={currentStage} devControls={import.meta.env.DEV} />
-          </div>
-        </Panel>
+        <AgentRoom
+          className={styles.stagePanel}
+          stage={currentStage}
+          events={events}
+          devControls={import.meta.env.DEV}
+        />
         <Panel className={styles.timelinePanel} eyebrow="Run Events" title="运行轨迹">
           <RunEventTimeline events={events} />
           {error && <div className={styles.runError}>{error}</div>}
