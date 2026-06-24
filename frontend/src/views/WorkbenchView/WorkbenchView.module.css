@@ -55,15 +55,7 @@
 
 .stagePanel {
   flex: 1.2;
-}
-
-.stageBody {
-  display: flex;
-  min-height: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-lg);
-  background: var(--color-accent-soft);
+  min-height: 0; /* AgentRoom 内容自适应，flex 比例由父侧栏控制 */
 }
 
 .timelinePanel {

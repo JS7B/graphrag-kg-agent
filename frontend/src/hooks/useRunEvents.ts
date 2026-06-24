@@ -3,7 +3,7 @@ import { subscribeRunEvents } from '../api/sse'
 import type { RunEvent, Stage } from '../types'
 
 /**
- * 运行事件流钩子。RunEventTimeline 与 PixelAgentStage 共享此唯一数据源，
+ * 运行事件流钩子。AgentRoom 与 RunEventTimeline 共享此唯一数据源，
  * 红线：currentStage 只从真实 RunEvent 派生，禁止前端编造（硬规则）。
  *
  * 传入 runId 后订阅 SSE，累积事件并派生当前 stage；runId 为 null 时不订阅。

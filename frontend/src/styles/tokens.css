@@ -42,6 +42,31 @@
   /* 焦点环（无障碍：可见键盘焦点） */
   --color-focus-ring: rgba(99, 102, 241, 0.45);
 
+  /* Agent 房间 · 深紫调「夜间小剧场」
+     作为浅色专业工作台里一块深色对比区（参考 ZCodeRoom）。
+     小人卫衣/气泡强调复用 --color-accent 系，保持品牌一致。 */
+  --room-bg: #1e1b2e;            /* 房间底色 */
+  --room-top: #2a2348;           /* 渐变上（夜空） */
+  --room-bot: #1a1530;           /* 渐变下 */
+  --room-ground: #3a2f5c;        /* 地面色（条纹主色） */
+  --room-ground-2: #342a52;      /* 地面色（条纹间色） */
+  --room-line: #4a3f70;          /* 房间分隔线 */
+  --room-line-2: #5e4f8e;        /* 房间实体描边 */
+  --room-accent: #c19eff;        /* 房间强调（紫，亮于 --color-accent 适配深底） */
+  --room-text: #f0e9ff;          /* 房间内文字 */
+  --room-dim: #9a8fc4;           /* 房间内次要文字 */
+  /* 小人配色（对齐 ZCodeRoom，卫衣走蓝靛紫） */
+  --dude-skin: #ffd9a8;
+  --dude-hair: #5e4f8e;
+  --dude-body: #5b6ee1;          /* 卫衣主色，呼应 --color-accent */
+  --dude-body-hi: #6ec3ff;       /* 卫衣高光/暗部 */
+  --dude-leg: #2a2540;
+  /* 道具配色 */
+  --prop-doc: #fef9e7;           /* 文档纸色 */
+  --prop-doc-line: #d9c98a;      /* 文档行纹 */
+  --prop-metal: #8b93b5;         /* 金属道具（碎纸机/复印机/档案柜） */
+  --prop-metal-dark: #5a6080;
+
   /* ───────────────────────────────────────────────────────────
      间距 · 4px 基准尺度（补足两端）
      ─────────────────────────────────────────────────────────── */
