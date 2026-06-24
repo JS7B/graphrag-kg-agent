@@ -159,15 +159,15 @@
 
 - [~] 实现文档库。（LibraryView 已接真实 GET /api/documents；上传/删除走 SSE runId 异步流；契约层已对齐）
 - [~] 实现上传 / 导入入口。（POST /api/documents 起 Run + SSE 订阅，终态刷新列表；导入仓库占位已删，无后端支持）
-- [~] 实现问答区。（WorkbenchView 对话流 mock；待接 /api/chat）
-- [~] 实现答案和引用区。（CitationPanel 角标定位+chunkId 反查 mock；待接真实 Citation）
-- [~] 实现图谱可视化。（GraphView Cytoscape 渲染 mock 图+搜索+实体详情；待接图谱 API）
-- [~] 实现运行事件时间线。（RunEventTimeline mock；待接 SSE）
-- [ ] 实现设置页。（仍为占位）
+- [x] 实现问答区。（WorkbenchView 接真实 /api/chat + SSE）
+- [x] 实现答案和引用区。（CitationPanel 真实 Citation + chunkId 反查）
+- [x] 实现图谱可视化。（GraphView 接真实 /api/graph/*，字段映射收口在 api/graph.ts）
+- [x] 实现运行事件时间线。（RunEventTimeline 接真实 SSE via useRunEvents）
+- [x] 实现设置页。（SettingsView 接 /health/deps 展示 Neo4j/LLM 连通状态）
 
 验证：
 
-- [~] 用户可以在前端完成导入、索引、提问、查看引用和查看图谱。（界面用 mock 全部跑通；真实链路待接 API）
+- [x] 用户可以在前端完成导入、索引、提问、查看引用和查看图谱。（全链路接真实 API）
 - [x] 页面布局不拥挤，重点信息清晰。（布局 A + 精细化设计系统，build 通过）
 
 ### 像素 Agent 动画
@@ -197,22 +197,22 @@
 
 ### 评估与质量保障
 
-- [ ] 准备样本文档集。
-- [ ] 准备问题与参考答案。
-- [ ] 标注关键实体和关系。
-- [ ] 编写 eval 脚本。
-- [ ] 统计实体召回率。
-- [ ] 统计关系可用率。
-- [ ] 统计引用命中率。
-- [ ] 统计明显幻觉率。
-- [ ] 补充后端单元测试。
-- [ ] 补充核心流程集成测试。
+- [x] 准备样本文档集。（4 篇：agents/api-needs/parsing-design/planning，放 samples/）
+- [x] 准备问题与参考答案。（evals/ground_truth.jsonl，每篇含 questions + answer_keywords）
+- [x] 标注关键实体和关系。（ground_truth.jsonl 含 entities/relations 标注）
+- [x] 编写 eval 脚本。（evals/run_eval.py，可复现，LLM 随机性已说明）
+- [x] 统计实体召回率。（实测 57.1%，未达 70% 目标——已诚实记录，待抽取优化）
+- [x] 统计关系可用率。（实测 100%）
+- [x] 统计引用命中率。（实测 100%）
+- [x] 统计明显幻觉率。（实测 16.7%，达标 ≤20%；含待人工复核清单）
+- [~] 补充后端单元测试。（新增 test_tasks 覆盖 run_chat；其余模块已有覆盖）
+- [x] 补充核心流程集成测试。（test_tasks 覆盖异步问答任务）
 
 验证：
 
-- [ ] 生成一份可复现的评估报告。
-- [ ] 核心流程测试通过。
-- [ ] README 说明如何运行评估。
+- [x] 生成一份可复现的评估报告。（evals/report.md + docs/evaluation.md 指标定义）
+- [x] 核心流程测试通过。（main 全量 119 passed + 1 skip）
+- [x] README 说明如何运行评估。（README 评估章节）
 
 ### 公开展示与简历材料
 
@@ -243,3 +243,4 @@
 - 2026-06-22：后端 feat/backend 完成 B 板块「Run/事件流 + SSE + 异步化 + 图谱查询 API」。新增 app/runs：models（Run/RunEvent + Stage 12 枚举锁定前端契约 + RunStatus + RunKind[ingest/chat/delete]）、store（内存注册表 + asyncio.Queue 订阅 + 历史回放 + 终态关闭，不持久化对齐简单优先）、tasks（run_ingest/run_chat/run_delete 后台任务，全程 try/except + 失败 emit error 防 SSE 流卡死）。新增 routers/runs（SSE stream + /events 历史兜底 + GET /{id}，含心跳保活）、routers/graph（实体列表带边悬空过滤、1跳邻域去重、模糊搜索）。异步化：POST /api/documents 改返回 {runId,documentId}，POST /api/chat 改返回 {runId} 终态事件带 answer（方案 a，省往返），DELETE /api/documents/{id} 异步删（语义按裁决：删 Document+Chunk+MENTIONS，Entity 靠 MENTIONS 孤立性判定保留共享）。采纳上轮标记的既有问题改进：chat 真实 LLM 测试重构为 mock + seed，不再因配额失败。main 上全量 117 passed + 1 skipped（extraction 真实测试因 main 无 key 正确 skip）。契约变化已记录，前端切真实时需按新契约（runId + SSE 订阅）接入。
 - 2026-06-22：前端 feat/frontend 完成「契约层改造对齐 B 板块异步 + SSE」（大脑拆分的第一轮，像素小人留下一轮亲调）。新建 api/sse.ts（subscribeRunEvents：EventSource 封装，终态 succeeded/failed 双保险 close，payload 严格校验 stage/status 枚举，BASE_URL 复用 client.ts），改造 useRunEvents（接 runId 参数 + 订阅真实 SSE + 切换重置 + 红线保留：currentStage 只从事件派生）。类型对齐后端：RunEventStatus 改 running/succeeded/failed、RunEvent 加 answer/timestamp_ms（采纳下划线，和后端 by_alias 一致）、Citation 加 documentId。业务场景改造：LibraryView 上传用原生 fetch+FormData（避开 apiFetch 强制 JSON content-type，工人自行想到的正确细节）→ 起 Run → 订阅 → 终态刷新，isBusy 防重复，删假按钮（导入仓库/重建索引无后端支持）；WorkbenchView 问答用户消息立即显示、终态落 agent 消息、引用展示"最近一条"语义；Timeline status 映射改对。GET 类（文档列表/图谱/chunks）保持 apiFetch 不变。mock SSE 未做（直连真实后端更简单，大脑倾向一致）。typecheck 零错误，build 成功（653KB chunk 警告是 Cytoscape 体积，非阻塞）。像素小人保持 idle 占位，未擅动。
 - 2026-06-24：像素 Agent 路线转向并落地。原精细 CSS 角色（PixelAgent）观感不达标（圆角化、比例失调、细节糊），且 AI 画精细角色一致性差——遂改 ZCodeRoom 式「深紫房间 + 极简悬浮小人 + 场景道具叙事」：小人弱化为 box-shadow 像素法色块（对齐 ZCodeRoom 配色 + 蓝靛卫衣 + 眼镜），状态靠头顶气泡 + 周围道具（碎纸机/放大镜/翻页等）表达。大脑先出 HTML 原型验证方向 + 写交接文档（frontend/docs/agent-room-*.md），feat/frontend 落地为 AgentRoom 组件并用 box-shadow 单 div 法优化性能、加常驻桌椅场景、StyleGallery 加 12 状态预览。currentStage 仍由真实 RunEvent 驱动（红线）。大脑 review 通过 + 用户审美验收通过（道具遮挡小人等细节瑕疵记录待后续微调），删除旧 PixelAgent，合并入 main。注：GitHub 推送暂缓，仅本地同步。
+- 2026-06-24：双线并行收两个板块。后端「评估与质量保障」：4 篇样本 + ground_truth 标注 + run_eval.py + report.md + docs/evaluation.md，量化四指标（解析100%/关系可用100%/引用命中100%/幻觉16.7% 达标，实体召回57.1% 未达70% 已诚实记录待优化）；评估中抓出 B 板块 run_chat 真 bug（误传 question 字符串给 search_chunks 未 embed + Answer 构造不存在字段），改为复用已验证的 answer_question，加 test_tasks。前端「真实 API 接入收尾」：GraphView 接 /api/graph/*（字段映射层 api/graph.ts 收口后端↔前端命名差异）、SettingsView 接 /health/deps、移除 mockGraph。至此前端工作台与像素 Agent 全链路接真实 API。大脑 review 通过后先后端后前端合入 main，全量 119 passed。GitHub 推送仍暂缓。
