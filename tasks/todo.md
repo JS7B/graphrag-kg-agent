@@ -153,7 +153,7 @@
 
 - [x] 前端能看到执行进度。（SSE 流历史回放 + 实时推送 + 终态关闭）
 - [x] 失败时能看到失败步骤和错误摘要。（后台任务全程 try/except，失败 emit error + status=failed，SSE 流关闭）
-- [~] 像素 Agent 状态由真实事件驱动。（后端契约就绪，待前端 PixelAgent 接 SSE stage）
+- [x] 像素 Agent 状态由真实事件驱动。（AgentRoom 接入 useRunEvents，currentStage 由 SSE 派生）
 
 ### 前端工作台
 
@@ -172,26 +172,28 @@
 
 ### 像素 Agent 动画
 
-- [ ] 设计像素 Agent 基础形象。
-- [ ] 实现 idle 状态。
-- [ ] 实现 uploading 状态。
-- [ ] 实现 parsing 状态。
-- [ ] 实现 extracting 状态。
-- [ ] 实现 linking 状态。
-- [ ] 实现 indexing 状态。
-- [ ] 实现 searching 状态。
-- [ ] 实现 checking 状态。
-- [ ] 实现 writing 状态。
-- [ ] 实现 deleting 状态。
-- [ ] 实现 rebuilding 状态。
-- [ ] 实现 error 状态。
-- [ ] 将动画状态接入 RunEvent。
+> 路线调整：放弃精细角色逐帧动画，改 ZCodeRoom 式「深紫房间 + 极简悬浮小人 + 场景道具叙事」（AgentRoom 组件）。小人本体几乎不动，状态靠头顶气泡 + 周围道具表达。
+
+- [x] 设计像素 Agent 基础形象。（box-shadow 像素法极简小人，对齐 ZCodeRoom + 蓝靛卫衣 + 眼镜）
+- [x] 实现 idle 状态。（悬浮 bob + ☕ 气泡）
+- [x] 实现 uploading 状态。（文档飞入 + 📥）
+- [x] 实现 parsing 状态。（文档翻页 + 📄）
+- [x] 实现 extracting 状态。（标签弹出 + 🏷️）
+- [x] 实现 linking 状态。（连线生长 + 🔗）
+- [x] 实现 indexing 状态。（档案柜抽屉 + 🗂️）
+- [x] 实现 searching 状态。（放大镜扫描 + 🔍）
+- [x] 实现 checking 状态。（放大镜校对 + ✓）
+- [x] 实现 writing 状态。（纸条吐出 + ⌨️）
+- [x] 实现 deleting 状态。（碎纸机 + 🗑️）
+- [x] 实现 rebuilding 状态。（复印机 + 🔄）
+- [x] 实现 error 状态。（红光闪 + 小人抖动 + ⚠️）
+- [x] 将动画状态接入 RunEvent。（AgentRoom 消费 useRunEvents 的 currentStage，红线守住）
 
 验证：
 
-- [ ] 每个核心操作都有对应动画。
-- [ ] 动画不遮挡主工作流。
-- [ ] 动画状态来自 RunEvent。
+- [x] 每个核心操作都有对应动画。（12 状态全覆盖，StyleGallery 预览页可一览）
+- [~] 动画不遮挡主工作流。（嵌侧栏不占主区；道具遮挡小人等细节瑕疵待后续微调）
+- [x] 动画状态来自 RunEvent。（currentStage 由真实 SSE 派生，devControls 仅开发预览）
 
 ### 评估与质量保障
 
@@ -240,3 +242,4 @@
 - 2026-06-22：大脑 review 后端窗口「文档/图谱 API + Run 事件流」合并大方案，裁决拆 A/B 两个独立交付（先 A 后 B），并明确 /api/chat 异步化（用户确认要做）和 DELETE 语义归 B 板块。后端按裁决完成 A 板块「文档上传入库 API + Document 状态字段」：POST /api/documents 同步跑完整链路（parse→embed→ingest→extract），Document 落 name/source_type/parse_status/index_status/chunk_count 状态字段（writer 顺手 SET），GET 列表/详情直查图库，camelCase alias 对齐前端，MAX_UPLOAD_MB 走配置，try/finally 清理临时文件。document_id 沿用 parse_file 内部稳定 id（规避 chunk_id 幂等破坏），幂等测试双重断言（chunkCount + 图库 Chunk 节点数）。main 上全量 100 passed + 5 skipped。注：feat/backend worktree 因配了真实 LLM key，chat/extraction 真实 LLM 测试因配额耗尽(403)而失败，但属环境问题非代码缺陷（A 未碰 chat 代码），main 上无 key 正确 skip 不受影响——既有测试设计可加 is_configured gate，留待后续。A 合并入本地 main，待网络恢复推送。
 - 2026-06-22：后端 feat/backend 完成 B 板块「Run/事件流 + SSE + 异步化 + 图谱查询 API」。新增 app/runs：models（Run/RunEvent + Stage 12 枚举锁定前端契约 + RunStatus + RunKind[ingest/chat/delete]）、store（内存注册表 + asyncio.Queue 订阅 + 历史回放 + 终态关闭，不持久化对齐简单优先）、tasks（run_ingest/run_chat/run_delete 后台任务，全程 try/except + 失败 emit error 防 SSE 流卡死）。新增 routers/runs（SSE stream + /events 历史兜底 + GET /{id}，含心跳保活）、routers/graph（实体列表带边悬空过滤、1跳邻域去重、模糊搜索）。异步化：POST /api/documents 改返回 {runId,documentId}，POST /api/chat 改返回 {runId} 终态事件带 answer（方案 a，省往返），DELETE /api/documents/{id} 异步删（语义按裁决：删 Document+Chunk+MENTIONS，Entity 靠 MENTIONS 孤立性判定保留共享）。采纳上轮标记的既有问题改进：chat 真实 LLM 测试重构为 mock + seed，不再因配额失败。main 上全量 117 passed + 1 skipped（extraction 真实测试因 main 无 key 正确 skip）。契约变化已记录，前端切真实时需按新契约（runId + SSE 订阅）接入。
 - 2026-06-22：前端 feat/frontend 完成「契约层改造对齐 B 板块异步 + SSE」（大脑拆分的第一轮，像素小人留下一轮亲调）。新建 api/sse.ts（subscribeRunEvents：EventSource 封装，终态 succeeded/failed 双保险 close，payload 严格校验 stage/status 枚举，BASE_URL 复用 client.ts），改造 useRunEvents（接 runId 参数 + 订阅真实 SSE + 切换重置 + 红线保留：currentStage 只从事件派生）。类型对齐后端：RunEventStatus 改 running/succeeded/failed、RunEvent 加 answer/timestamp_ms（采纳下划线，和后端 by_alias 一致）、Citation 加 documentId。业务场景改造：LibraryView 上传用原生 fetch+FormData（避开 apiFetch 强制 JSON content-type，工人自行想到的正确细节）→ 起 Run → 订阅 → 终态刷新，isBusy 防重复，删假按钮（导入仓库/重建索引无后端支持）；WorkbenchView 问答用户消息立即显示、终态落 agent 消息、引用展示"最近一条"语义；Timeline status 映射改对。GET 类（文档列表/图谱/chunks）保持 apiFetch 不变。mock SSE 未做（直连真实后端更简单，大脑倾向一致）。typecheck 零错误，build 成功（653KB chunk 警告是 Cytoscape 体积，非阻塞）。像素小人保持 idle 占位，未擅动。
+- 2026-06-24：像素 Agent 路线转向并落地。原精细 CSS 角色（PixelAgent）观感不达标（圆角化、比例失调、细节糊），且 AI 画精细角色一致性差——遂改 ZCodeRoom 式「深紫房间 + 极简悬浮小人 + 场景道具叙事」：小人弱化为 box-shadow 像素法色块（对齐 ZCodeRoom 配色 + 蓝靛卫衣 + 眼镜），状态靠头顶气泡 + 周围道具（碎纸机/放大镜/翻页等）表达。大脑先出 HTML 原型验证方向 + 写交接文档（frontend/docs/agent-room-*.md），feat/frontend 落地为 AgentRoom 组件并用 box-shadow 单 div 法优化性能、加常驻桌椅场景、StyleGallery 加 12 状态预览。currentStage 仍由真实 RunEvent 驱动（红线）。大脑 review 通过 + 用户审美验收通过（道具遮挡小人等细节瑕疵记录待后续微调），删除旧 PixelAgent，合并入 main。注：GitHub 推送暂缓，仅本地同步。
