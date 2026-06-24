@@ -17,9 +17,7 @@ from app.clients import llm
 from app.extraction import extract_and_ingest
 from app.graph import embed_chunks, ingest_document
 from app.parsing import parse_file
-from app.qa import expand_entities
-from app.qa.models import Answer
-from app.qa.pipeline import build_answer_messages, build_context, rerank_chunks, search_chunks
+from app.qa.pipeline import answer_question
 from app.runs.models import RunEvent, RunStatus, Stage
 from app.runs.store import RunStore
 
@@ -88,25 +86,21 @@ async def run_chat(
 ) -> None:
     """问答后台任务：searching→checking→writing→done，终态事件带 answer（方案 a）。
 
-    把 answer_question 的内部步骤拆开，在每个里程碑 emit 事件，让前端像素 Agent 跟着走。
+    直接复用已验证正确的 answer_question（同步链路），在各里程碑 emit 事件让前端
+    像素 Agent 跟着真实检索进度走。不拆步骤手写——曾因 search_chunks 误传 question
+    字符串（应先 embed）+ Answer 构造了不存在的 question 字段而出 bug，复用正确实现
+    更稳妥。
     """
     try:
-        _emit(store, run_id, Stage.SEARCHING, message="向量召回相关片段")
-        hits = search_chunks(driver, question)
-
-        _emit(store, run_id, Stage.CHECKING, message="重排与图谱扩展")
-        hits = rerank_chunks(question, hits)
-        relations = expand_entities(driver, hits)
-        context = build_context(hits, relations)
-
+        _emit(store, run_id, Stage.SEARCHING, message="向量召回 + 重排 + 图谱扩展")
+        _emit(store, run_id, Stage.CHECKING, message="组装上下文")
         _emit(store, run_id, Stage.WRITING, message="生成带引用回答")
-        messages = build_answer_messages(question, context)
-        raw = llm.chat(messages)
-        answer = Answer(question=question, text=raw, citations=context.citations)
+
+        answer = answer_question(driver, question)
 
         _emit(
             store, run_id, Stage.IDLE, RunStatus.SUCCEEDED,
-            message="回答完成",
+            message=f"回答完成（{len(answer.citations)} 条引用）",
             answer=answer.model_dump(by_alias=True),
         )
     except Exception as exc:  # noqa: BLE001

@@ -2,7 +2,7 @@
 
 面向个人文档集合（技术论文 / GitHub 仓库文档 / 产品需求文档）的端到端 **GraphRAG** 系统：自动完成文档解析、实体与关系抽取、Neo4j 知识图谱构建、向量召回 + 图谱邻域扩展检索，生成**可追溯引用**的回答，并配套一个清晰专业、带像素 Agent 动效的前端工作台。
 
-> ⚠️ 开发中（WIP）。当前已就绪：项目骨架、Neo4j 本地部署。后端 / 前端尚未实现。
+> ⚠️ 开发中（WIP）。后端已就绪：文档解析、Neo4j 图谱与向量索引、实体关系抽取、GraphRAG 检索回答、Run/事件流 + SSE、评估。前端工作台 + 像素 Agent 动画开发中。
 
 ## 技术栈
 
@@ -33,6 +33,28 @@ docker compose up -d neo4j
 ```
 
 后端、前端启动命令将在对应模块实现后补充。
+
+### 后端 API（已就绪）
+
+```bash
+cd backend
+# 在 myself conda 环境
+uvicorn app.main:create_app --factory --reload
+# API: http://localhost:8000，健康检查 /health、/health/deps
+```
+
+核心端点：文档上传入库 `POST /api/documents`、问答 `POST /api/chat`（异步 + SSE 进度流 `/api/runs/{runId}/events/stream`）、图谱查询 `GET /api/graph/entities`。
+
+## 评估
+
+系统有一套可复现的评估，量化解析成功率、实体召回率、关系可用率、引用命中率、幻觉率五项指标。详见 [`docs/evaluation.md`](docs/evaluation.md)。
+
+```bash
+# 前置：Neo4j 容器在跑 + .env 配好 LLM
+cd backend
+python ../evals/run_eval.py
+# 产出 evals/report.md（指标实测值 + 逐篇明细 + 待复核清单）
+```
 
 ## 目录结构
 

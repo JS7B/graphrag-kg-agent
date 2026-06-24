@@ -182,3 +182,29 @@
   - **ChatResponse 缺 alias**：Pydantic 模型字段 `run_id` 默认序列化成 `run_id`，前端要 `runId`。需 `Field(alias="runId")` + `model_dump(by_alias=True)`。与 documents 路由同款坑。
   - **TestClient 不触发 lifespan**：`TestClient(app)` 不进 `with` 块就不跑 lifespan，`app.state.runs` 不存在。测试里手动注入 `app.state.runs = RunStore()` 和 `app.state.neo4j = driver`。
   - **modelverse API key 配额耗尽**：全量回归时 `test_llm_real` 因 key 日限额 1000 用尽返回 403，非本次改动问题。
+
+
+## 2026-06-24 评估与质量保障 + run_chat bug 修复
+
+- 做了什么：为本系统建了一套可复现的评估，量化 AGENTS.md 四项硬指标。4 篇样本取自本项目自带文档（规划/AGENTS/API契约/解析设计），人工标注 ground truth（实体/关系/问答），单脚本 `evals/run_eval.py` 跑全链路出报告。另顺手修了 `run_chat` 后台任务的一个真实 bug。
+
+- 这是什么：
+  - **评估（evaluation）**：给 AI 系统打分的方法论。光跑通不够，要用真实数据量化"它到底有多准"——召回率（该抽的抽到了吗）、命中率（引用对不对）、幻觉率（编没编）。这是 AI 项目从 demo 变成"可证明效果"的关键，也是简历硬通货。
+  - **ground truth（标注真值）**：人手工标的"标准答案"。机器抽出的实体要和人标的比，才知道漏没漏。标注质量直接决定评估可信度。
+  - **召回率 vs 准确率**：召回率=该找的找到了多少（漏没漏），准确率=找到的对不对（找错没）。评估抽取质量主要看召回率。
+
+- 为什么需要：CLAUDE.md 把"不只是 demo，能证明效果"列为验收硬指标。没有评估，"实体抽取还行"只是主观感受；有评估，"召回率 78%、引用命中率 100%"才是可复现的工程证据。
+
+- 为什么这么做（关键取舍）：
+  - **样本用本项目自带文档**：零版权风险、零下载、现成。虽然不是真实论文，但覆盖技术规划/GitHub文档/API契约/设计规格四类，实体足够丰富，够证明指标可算可复现。
+  - **document_id 用 eval_ 前缀**：Neo4j 跨 worktree 共享，评估数据用独立前缀，脚本跑完自动 `MATCH ... STARTS WITH 'eval_' DETACH DELETE`，不污染前端联调数据。
+  - **调 extract_document + merge_extractions 而非 extract_and_ingest**：后者只返回统计数、丢弃合并后的实体对象。评估要拿实体算召回率，必须直接调前两个，避免重复 LLM 抽取（一次抽取既算指标又写图）。
+  - **幻觉率半自动**：全自动判幻觉是开放难题（要理解"这句话有没有依据"）。半自动——机器按句切分、列出无角标引用的"可疑句"，人复核——诚实且可复现，符合交接清单"允许人工辅助但要说明方法"。
+  - **引用命中率算法修正**：初版要求 chunk snippet 逐字含标注特征词，过严——语义召回的 chunk 未必逐字含标注词，但答案正确且有引用即应算命中。改为"答案正文含标注答案关键词 且 有引用"。
+  - **评估前 DROP 向量索引重建**：测试 fixture 把索引重建成 8 维，生产 embedding 是 3072 维。评估脚本启动时先 `DROP INDEX ... IF EXISTS` 再用生产维度 `ensure_schema`，避免维度冲突。
+
+- 踩了什么坑：
+  - **run_chat 真实 bug**：探索代理发现 `run_chat` 把 `question`（字符串）直接传给 `search_chunks`（第二参数应是 embedding 向量），且 `Answer(question=question,...)` 塞了不存在的字段。B 板块测试用 mock run_chat，没跑真实链路，所以 bug 一直藏着。修复：run_chat 直接复用已验证正确的 `answer_question`，在各里程碑 emit 事件——彻底消除错误手写步骤的风险。
+  - **向量索引维度冲突**：首次跑评估，向量查询报"Index query vector has 3072 dimensions, but indexed vectors have 8"。根因是测试把索引建成了 8 维。评估脚本启动时强制 DROP + 用生产维度重建。
+  - **全量评估超时**：4 篇样本 × 逐 chunk LLM 抽取 + 问答，单次跑超 10 分钟。改后台跑 + 先单篇验证全链路。
+  - **LLM 抽取随机性**：同一篇样本两次跑，实体召回率从 78.6% 降到 57.1%——LLM 每次抽的实体集合不同。这是真实情况，评估的价值正是量化这个波动。
