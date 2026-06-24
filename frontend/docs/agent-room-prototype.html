@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AgentRoom 原型 · graphrag-kg-agent</title>
+<style>
+  /* 配色对齐 ZCodeRoom 原型（紫调房间），身体色用本项目蓝靛紫主色 */
+  :root{
+    --bg:#1e1b2e; --room-top:#2a2348; --room-bot:#1a1530;
+    --ground:#3a2f5c; --ground2:#342a52; --line:#4a3f70; --line2:#5e4f8e;
+    --accent:#c19eff; --accent2:#6ec3ff; --accent-soft:#c19eff;
+    /* 小人配色：对齐 ZCodeRoom COL，身体改本项目蓝靛紫 */
+    --skin:#ffd9a8; --eye:#222; --hair:#5e4f8e;
+    --body:#5b6ee1; --body2:#6ec3ff; --leg:#2a2540; --shoe:#111;
+    --doc:#fef9e7; --doc-line:#d9c98a; --metal:#8b93b5; --metal-dark:#5a6080;
+    --text:#f0e9ff; --dim:#9a8fc4; --green:#7fd1a0; --red:#ff7a7a; --amber:#ffb347;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;image-rendering:pixelated}
+  body{
+    font-family:"Segoe UI","Microsoft YaHei",sans-serif;
+    background:#0a0e1a; color:var(--text);
+    min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:20px; padding:30px;
+  }
+  .caption{color:var(--dim);font-size:13px;text-align:center;line-height:1.7;max-width:420px}
+  .caption b{color:var(--accent-soft)}
+
+  /* ===== Agent 房间面板（嵌在工作台侧栏，约 300 宽）===== */
+  .panel{
+    width:300px; background:var(--bg);
+    border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    box-shadow:0 12px 40px rgba(0,0,0,.4);
+  }
+  .panel-head{
+    padding:10px 14px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .eyebrow{font-size:10px;letter-spacing:1.5px;color:var(--dim);text-transform:uppercase}
+  .panel-title{font-size:14px;font-weight:600;margin-top:2px}
+  .live{width:7px;height:7px;border-radius:50%;background:var(--green);
+        box-shadow:0 0 6px var(--green);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* ===== 房间画布 ===== */
+  .room{
+    position:relative; height:200px; overflow:hidden;
+    background:linear-gradient(180deg,var(--room-top),var(--room-bot));
+  }
+  /* 像素地面 */
+  .ground{
+    position:absolute;left:0;right:0;bottom:0;height:42px;
+    background:repeating-linear-gradient(90deg,var(--ground) 0 14px,var(--ground2) 14px 28px);
+    border-top:2px solid var(--line);
+  }
+  /* 门牌：当前文档/任务 */
+  .plate{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(108,92,231,.18);border:1px solid var(--accent);
+    color:var(--accent-soft);font-size:10px;padding:2px 10px;border-radius:5px;
+    white-space:nowrap;z-index:6;
+  }
+
+  /* ===== 像素色块小人（ZCodeRoom 网格画法，JS 逐格生成 .px）===== */
+  .dude{
+    position:absolute; left:50%; bottom:52px; margin-left:-16px;
+    width:32px; height:36px; z-index:4;
+    animation:bob 2.4s ease-in-out infinite;
+  }
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+  /* 工作时摆动更明显 */
+  .room[data-busy="1"] .dude{animation:bobBusy 1s ease-in-out infinite}
+  @keyframes bobBusy{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-3px) rotate(3deg)}}
+  /* error 抖动 */
+  .room[data-stage="error"] .dude{animation:shake .3s ease-in-out 4}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+  .dude .px{position:absolute}
+
+  /* 影子（悬浮，地面上一团）*/
+  .d-shadow{
+    position:absolute;left:50%;bottom:48px;transform:translateX(-50%);
+    width:34px;height:7px;background:radial-gradient(ellipse,rgba(0,0,0,.4),transparent 70%);
+    animation:shadowPulse 2.4s ease-in-out infinite;z-index:3;
+  }
+  @keyframes shadowPulse{0%,100%{width:34px;opacity:.6}50%{width:26px;opacity:.4}}
+
+  /* ===== 头顶气泡 ===== */
+  .bubble{
+    position:absolute;left:50%;bottom:108px;transform:translateX(-50%);
+    min-width:24px;height:24px;padding:0 4px;
+    background:var(--bg);border:2px solid var(--accent);border-radius:6px;
+    display:grid;place-items:center;font-size:13px;z-index:7;
+    animation:floatB 1.8s ease-in-out infinite;
+  }
+  @keyframes floatB{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-3px)}}
+  .bubble::after{content:"";position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+    border:5px solid transparent;border-top-color:var(--accent)}
+
+  /* ===== 场景道具层（按 data-stage 显隐）===== */
+  .prop{position:absolute;opacity:0;transition:opacity .25s;z-index:5}
+  .room[data-stage="uploading"] .p-upload,
+  .room[data-stage="parsing"] .p-doc,
+  .room[data-stage="extracting"] .p-tag,
+  .room[data-stage="linking"] .p-link,
+  .room[data-stage="indexing"] .p-cabinet,
+  .room[data-stage="searching"] .p-glass,
+  .room[data-stage="checking"] .p-glass,
+  .room[data-stage="writing"] .p-type,
+  .room[data-stage="deleting"] .p-shred,
+  .room[data-stage="rebuilding"] .p-copy,
+  .room[data-stage="error"] .p-err{opacity:1}
+
+  /* uploading：文档从右飞入 */
+  .p-upload{right:0;bottom:80px;width:20px;height:14px;background:var(--doc);border:1px solid var(--doc-line);border-radius:1px;
+    animation:flyIn 1s ease-in infinite}
+  @keyframes flyIn{0%{right:-20px;opacity:0}30%{opacity:1}100%{right:120px;opacity:0}}
+  /* parsing：文档在面前翻页 */
+  .p-doc{left:50%;bottom:78px;transform:translateX(-50%);width:24px;height:18px;background:var(--doc);border:1px solid var(--doc-line);border-radius:1px;
+    animation:flip 0.6s linear infinite}
+  @keyframes flip{0%,100%{transform:translateX(-50%) scaleX(1)}50%{transform:translateX(-50%) scaleX(.2)}}
+  /* extracting：标签弹出 */
+  .p-tag{left:54%;bottom:96px;width:14px;height:9px;background:var(--accent-soft);border-radius:1px;
+    animation:pop 0.8s ease-out infinite}
+  @keyframes pop{0%{transform:scale(0) translateY(0);opacity:0}40%{transform:scale(1) translateY(-8px);opacity:1}100%{transform:scale(1) translateY(-16px);opacity:0}}
+  /* linking：连线生长 */
+  .p-link{left:30%;bottom:92px;width:40px;height:2px;background:var(--accent);transform-origin:left;
+    animation:grow 1s ease-in-out infinite}
+  @keyframes grow{0%{transform:scaleX(0)}50%{transform:scaleX(1)}100%{transform:scaleX(0)}}
+  .p-link::before,.p-link::after{content:"";position:absolute;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--accent-soft)}
+  .p-link::before{left:-3px}.p-link::after{right:-3px}
+  /* indexing：档案柜抽屉开合 */
+  .p-cabinet{right:14px;bottom:54px;width:30px;height:40px;background:var(--metal-dark);border:1px solid var(--line);border-radius:2px}
+  .p-cabinet::before,.p-cabinet::after{content:"";position:absolute;left:3px;width:24px;height:10px;background:var(--metal);border-radius:1px}
+  .p-cabinet::before{top:4px;animation:drawer 1.2s ease-in-out infinite}
+  .p-cabinet::after{top:18px;animation:drawer 1.2s ease-in-out .3s infinite}
+  @keyframes drawer{0%,100%{transform:translateX(0)}50%{transform:translateX(5px)}}
+  /* searching/checking：放大镜扫描 */
+  .p-glass{left:48%;bottom:84px;width:18px;height:18px;border:3px solid var(--accent);border-radius:50%;background:rgba(167,139,250,.12);
+    animation:scan 1.6s ease-in-out infinite}
+  .p-glass::after{content:"";position:absolute;bottom:-7px;right:-3px;width:3px;height:9px;background:var(--accent);transform:rotate(-45deg)}
+  @keyframes scan{0%,100%{transform:translateX(0) translateY(0)}50%{transform:translateX(20px) translateY(6px)}}
+  /* writing：纸条吐出 */
+  .p-type{left:50%;bottom:76px;transform:translateX(-50%);width:22px;height:6px;background:var(--doc);border:1px solid var(--doc-line);
+    animation:emit 1s ease-out infinite}
+  @keyframes emit{0%{height:2px;opacity:.5}100%{height:18px;opacity:1}}
+  /* deleting：碎纸机 + 碎屑 */
+  .p-shred{left:50%;bottom:54px;transform:translateX(-50%);width:36px;height:14px;background:var(--metal-dark);border:1px solid var(--line);border-radius:2px}
+  .p-shred::before{content:"";position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:18px;height:12px;background:var(--doc);border:1px solid var(--doc-line);
+    animation:suck 0.9s ease-in infinite}
+  @keyframes suck{0%{top:-12px;opacity:1}100%{top:2px;opacity:0}}
+  .p-shred::after{content:"";position:absolute;bottom:-8px;left:50%;width:2px;height:6px;background:var(--doc);box-shadow:-6px 0 var(--doc),6px 1px var(--doc),-3px 2px var(--doc),3px 0 var(--doc);
+    animation:fall 0.9s linear infinite}
+  @keyframes fall{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(8px)}}
+  /* rebuilding：复印机 */
+  .p-copy{right:12px;bottom:54px;width:34px;height:30px;background:var(--metal-dark);border:1px solid var(--line);border-radius:2px}
+  .p-copy::before{content:"";position:absolute;top:6px;left:4px;width:26px;height:4px;background:var(--accent-soft);
+    animation:scanLight 1.2s ease-in-out infinite}
+  @keyframes scanLight{0%,100%{top:6px;opacity:.4}50%{top:20px;opacity:1}}
+  .p-copy::after{content:"";position:absolute;bottom:-6px;left:8px;width:18px;height:10px;background:var(--doc);border:1px solid var(--doc-line);
+    animation:eject 1.2s ease-out infinite}
+  @keyframes eject{0%{bottom:4px;opacity:0}100%{bottom:-8px;opacity:1}}
+  /* error：红光 */
+  .p-err{inset:0;background:radial-gradient(circle at 50% 60%,rgba(248,113,113,.18),transparent 60%);animation:errFlash .5s ease-in-out 3}
+  @keyframes errFlash{0%,100%{opacity:.3}50%{opacity:1}}
+
+  /* ===== 状态标签 + 运行轨迹 ===== */
+  .status{padding:10px 14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .status .label{font-size:13px;font-weight:600;color:var(--accent-soft)}
+  .status .detail{font-size:11px;color:var(--dim);margin-left:auto}
+  .timeline{padding:8px 14px 12px;border-top:1px solid var(--line);max-height:90px;overflow-y:auto}
+  .ev{font-size:11px;color:var(--dim);padding:2px 0;display:flex;gap:6px}
+  .ev .t{color:var(--accent);font-family:Consolas,monospace;flex:0 0 auto}
+
+  /* ===== 演示控制台 ===== */
+  .demo{display:flex;flex-wrap:wrap;gap:5px;max-width:320px;justify-content:center}
+  .demo button{font-size:11px;padding:4px 9px;border:1px solid var(--line);background:var(--room-top);
+    color:var(--text);border-radius:5px;cursor:pointer}
+  .demo button:hover{border-color:var(--accent)}
+  .demo button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+</style>
+</head>
+<body>
+
+<div class="caption">
+  <b>AgentRoom 原型</b> · 极简悬浮小人 + 场景道具叙事<br>
+  小人本体几乎不变（只悬浮/摆动），状态全靠<b>头顶气泡</b>和<b>周围道具</b>表达<br>
+  点下方按钮切换 12 个状态查看效果
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div>
+      <div class="eyebrow">Agent Room</div>
+      <div class="panel-title">像素档案员</div>
+    </div>
+    <div class="live"></div>
+  </div>
+
+  <div class="room" id="room" data-stage="idle" data-busy="0">
+    <div class="plate">📦 attention-is-all-you-need.pdf</div>
+
+    <!-- 场景道具层 -->
+    <div class="prop p-upload"></div>
+    <div class="prop p-doc"></div>
+    <div class="prop p-tag"></div>
+    <div class="prop p-link"></div>
+    <div class="prop p-cabinet"></div>
+    <div class="prop p-glass"></div>
+    <div class="prop p-type"></div>
+    <div class="prop p-shred"></div>
+    <div class="prop p-copy"></div>
+    <div class="prop p-err"></div>
+
+    <!-- 气泡 -->
+    <div class="bubble" id="bubble">☕</div>
+
+    <!-- 小人（ZCodeRoom 网格画法，JS 生成 .px 色块）-->
+    <div class="d-shadow"></div>
+    <div class="dude" id="dude"></div>
+
+    <div class="ground"></div>
+  </div>
+
+  <div class="status">
+    <span class="label" id="label">待命</span>
+    <span class="detail" id="detail">空闲中</span>
+  </div>
+
+  <div class="timeline" id="timeline"></div>
+</div>
+
+<div class="demo" id="demo"></div>
+
+<script>
+  /* ===== 像素小人：ZCodeRoom 网格画法移植 =====
+     图案 8列×8行；每格 4px宽 × 4.5px高 ≈ 32×36。
+     字符：. 透明 | h 发 | s 肤 | e 眼 | g 眼镜框 | b 身体(卫衣) | B 身体暗部 | l 腿 | o 鞋 */
+  const DUDE_COLORS = {
+    h:'var(--hair)', s:'var(--skin)', e:'var(--eye)', g:'#2a2540',
+    b:'var(--body)', B:'var(--body2)', l:'var(--leg)', o:'var(--shoe)',
+  };
+  // 戴方框眼镜的档案员（在 ZCodeRoom 图案基础上把眼睛行做成眼镜）
+  const DUDE_PATTERN = [
+    '..hhhh..',
+    '.hhhhhh.',
+    '.hssssh.',  // 额发 + 脸
+    '.gseseg.',  // 眼镜框 + 眼（g 框住 e）
+    '..ssss..',  // 脸下半（含鼻嘴留白）
+    '.bbBBbb.',  // 卫衣（右侧 B 暗部）
+    '.bbBBbb.',
+    '.ll..ll.',  // 腿（悬浮，无鞋也可；保留短腿）
+  ];
+  function drawDude(el, pattern, colors){
+    el.innerHTML = '';
+    const gw = 4, gh = 4.5;
+    pattern.forEach((row, y) => [...row].forEach((ch, x) => {
+      const c = colors[ch];
+      if (!c) return;
+      const p = document.createElement('div');
+      p.className = 'px';
+      p.style.left = (x * gw) + 'px';
+      p.style.top = (y * gh) + 'px';
+      p.style.width = gw + 'px';
+      p.style.height = gh + 'px';
+      p.style.background = c;
+      el.appendChild(p);
+    }));
+  }
+  drawDude(document.getElementById('dude'), DUDE_PATTERN, DUDE_COLORS);
+
+  const SCENES = {
+    idle:       {label:'待命',     icon:'☕', detail:'空闲中',       busy:0},
+    uploading:  {label:'搬运文档', icon:'📥', detail:'接收文件',     busy:1},
+    parsing:    {label:'拆文件',   icon:'📄', detail:'解析文档',     busy:1},
+    extracting: {label:'贴标签',   icon:'🏷️', detail:'抽取实体',     busy:1},
+    linking:    {label:'拉关系',   icon:'🔗', detail:'连接关系',     busy:1},
+    indexing:   {label:'整理档案', icon:'🗂️', detail:'写入图库',     busy:1},
+    searching:  {label:'翻找',     icon:'🔍', detail:'向量召回',     busy:1},
+    checking:   {label:'校对',     icon:'✓',  detail:'校验引用',     busy:1},
+    writing:    {label:'打字',     icon:'⌨️', detail:'生成回答',     busy:1},
+    deleting:   {label:'碎纸',     icon:'🗑️', detail:'删除文档',     busy:1},
+    rebuilding: {label:'重排',     icon:'🔄', detail:'重建索引',     busy:1},
+    error:      {label:'出错',     icon:'⚠️', detail:'发生错误',     busy:0},
+  };
+  const ORDER = Object.keys(SCENES);
+  const room = document.getElementById('room');
+  const bubble = document.getElementById('bubble');
+  const label = document.getElementById('label');
+  const detail = document.getElementById('detail');
+  const timeline = document.getElementById('timeline');
+  const demo = document.getElementById('demo');
+
+  let evCount = 0;
+  function apply(stage){
+    const s = SCENES[stage];
+    room.dataset.stage = stage;
+    room.dataset.busy = s.busy;
+    bubble.textContent = s.icon;
+    label.textContent = s.label;
+    detail.textContent = s.detail;
+    // 模拟事件流追加
+    const t = new Date().toLocaleTimeString('zh-CN',{hour12:false});
+    const ev = document.createElement('div');
+    ev.className='ev';
+    ev.innerHTML=`<span class="t">${t}</span><span>${s.label} · ${s.detail}</span>`;
+    timeline.prepend(ev);
+    if(timeline.children.length>8) timeline.lastChild.remove();
+    document.querySelectorAll('.demo button').forEach(b=>b.classList.toggle('active',b.dataset.s===stage));
+  }
+  ORDER.forEach(stage=>{
+    const b=document.createElement('button');
+    b.dataset.s=stage; b.textContent=SCENES[stage].label;
+    b.onclick=()=>apply(stage);
+    demo.appendChild(b);
+  });
+  apply('idle');
+</script>
+</body>
+</html>

@@ -44,3 +44,6 @@ Thumbs.db
 
 # subagent-driven-development working-tree reports
 /sdd/
+
+# 前端探索/测试素材（原型、截图、AI 生成图）
+frontend/.test/
