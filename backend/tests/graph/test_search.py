@@ -3,7 +3,7 @@
 from app.graph.search import search_chunks
 from app.graph.writer import ingest_document
 from app.parsing.models import Chunk, ParsedDocument, SourceLocation
-from tests.graph.conftest import TEST_DIM
+from tests.conftest import TEST_DIM
 
 
 def _onehot(i: int) -> list[float]:
