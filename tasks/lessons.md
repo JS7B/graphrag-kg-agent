@@ -52,3 +52,17 @@
 **场景**：harness 骨架选型需要调研 Run 生命周期 / 编排拓扑 / KG 管线 / 上下文与可观测四条线。分发 4 个并行子代理各盯一个方向，主上下文只接收压缩结论。
 
 **如何应用**：复杂选型/调研，按"一个子代理一个方向"分发并行，要求"final message 即结构化结论，不堆原始材料"，并要求标注"未能验证"项。对齐 CLAUDE.md 子代理策略。注意：子代理环境可能 WebFetch 受限，API 签名类结论需在实现阶段现场核对。
+
+---
+
+## L6：集成测试用小维度重建共享 Neo4j 向量索引，跑完未恢复 → 污染真实查询
+
+**场景**：graph/extraction/qa 的集成测试 conftest 用 `TEST_DIM=8` `DROP INDEX 再重建` 向量索引以加速。但所有 worktree + 测试共享同一个 Neo4j 容器同一库，测试跑完没把索引恢复成生产维度（EMBEDDING_DIM=3072）。完整验证真实问答时，3072 维查询向量撞上残留的 8 维索引，`db.index.vector.queryNodes` 报 `Index query vector has 3072 dimensions, but indexed vectors have 8`。Agent 的 vector_search 每轮都失败（被工具 try/except 接住回传错误），表现为"搜了多轮却答无法回答"——症状离根因很远，排查时容易误判为 Agent/召回逻辑 bug。
+
+**为什么**：向量索引是**全库共享的单例**（索引名固定 chunk_embedding），不像 test_ 前缀的节点能靠 autouse 清理隔离。维度被改成 8 后，所有真实查询全挂。
+
+**如何应用**：
+1. 集成测试若改了共享索引维度，**必须在 session 级 fixture teardown 里恢复成生产维度**（DROP + 以 EMBEDDING_DIM 重建），不能只在 setup 改。
+2. 真实问答"答不出"时，先直接调 `search_chunks` 看底层召回/报错，再怀疑上层 Agent 逻辑——症状（无法回答）离根因（索引维度）很远。
+3. 修复：`DROP INDEX chunk_embedding IF EXISTS` + `ensure_schema()` 以 3072 重建。
+4. 根治方向（待办）：测试用独立数据库/独立索引名，或 conftest teardown 恢复维度。共享单容器是「简单优先」的代价，需用纪律补。
