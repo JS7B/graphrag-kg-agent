@@ -2,6 +2,7 @@
 
 import httpx
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessage
 
 from app.config import get_settings
 
@@ -37,6 +38,28 @@ def chat(messages: list[dict], *, response_format: dict | None = None) -> str:
         kwargs["response_format"] = response_format
     resp = _client().chat.completions.create(**kwargs)
     return resp.choices[0].message.content
+
+
+def chat_with_tools(
+    messages: list[dict],
+    *,
+    tools: list[dict],
+    tool_choice: str = "auto",
+) -> ChatCompletionMessage:
+    """带 function calling 的 chat completion，返回完整 message 对象。
+
+    与 chat() 的区别：透传 tools / tool_choice，返回 ChatCompletionMessage（含
+    tool_calls + content），由调用方（agent.py）读取 .tool_calls 决定后续编排。
+    端点不支持 tools 时会抛 openai.BadRequestError，由 agent 层捕获触发降级。
+    """
+    settings = get_settings()
+    resp = _client().chat.completions.create(
+        model=settings.chat_model,
+        messages=messages,
+        tools=tools,
+        tool_choice=tool_choice,
+    )
+    return resp.choices[0].message
 
 
 def embed(texts: list[str]) -> list[list[float]]:

@@ -17,6 +17,7 @@ from app.clients import llm
 from app.extraction import extract_and_ingest
 from app.graph import embed_chunks, ingest_document
 from app.parsing import parse_file
+from app.qa.agent import ToolCallingUnsupported, answer_question_agentic
 from app.qa.pipeline import answer_question
 from app.runs.models import RunEvent, RunStatus, Stage
 from app.runs.store import RunStore
@@ -84,28 +85,41 @@ async def run_chat(
     run_id: str,
     question: str,
 ) -> None:
-    """问答后台任务：searching→checking→writing→done，终态事件带 answer（方案 a）。
+    """问答后台任务（Agentic RAG）：通过 on_event 让 Agent 每步真实 emit 事件。
 
-    直接复用已验证正确的 answer_question（同步链路），在各里程碑 emit 事件让前端
-    像素 Agent 跟着真实检索进度走。不拆步骤手写——曾因 search_chunks 误传 question
-    字符串（应先 embed）+ Answer 构造了不存在的 question 字段而出 bug，复用正确实现
-    更稳妥。
+    优先调 answer_question_agentic（ReAct 循环），循环内每调一个工具就 emit 对应
+    stage（vector_search→SEARCHING、expand_entity→LINKING、生成→WRITING），多轮问答
+    会反复出现 SEARCHING/CHECKING，前端像素房间真正跟着 Agent 多轮决策走。
+    降级：LLM 端点不支持 function calling 时，回退线性 answer_question，并按旧固定
+    序列 emit 事件（searching→checking→writing），保证问答不挂、前端契约可预期。
     """
     try:
-        _emit(store, run_id, Stage.SEARCHING, message="向量召回 + 重排 + 图谱扩展")
-        _emit(store, run_id, Stage.CHECKING, message="组装上下文")
-        _emit(store, run_id, Stage.WRITING, message="生成带引用回答")
-
-        answer = answer_question(driver, question)
-
-        _emit(
-            store, run_id, Stage.IDLE, RunStatus.SUCCEEDED,
-            message=f"回答完成（{len(answer.citations)} 条引用）",
-            answer=answer.model_dump(by_alias=True),
-        )
+        answer = _run_chat_agentic(driver, store, run_id, question)
     except Exception as exc:  # noqa: BLE001
         logger.exception("问答任务失败 run=%s", run_id)
         _emit(store, run_id, Stage.ERROR, RunStatus.FAILED, message=f"回答失败: {exc}")
+        return
+
+    _emit(
+        store, run_id, Stage.IDLE, RunStatus.SUCCEEDED,
+        message=f"回答完成（{len(answer.citations)} 条引用）",
+        answer=answer.model_dump(by_alias=True),
+    )
+
+
+def _run_chat_agentic(driver: Driver, store: RunStore, run_id: str, question: str):
+    """跑 Agentic RAG；端点不支持 tool calling 时降级线性 pipeline。返回 Answer。"""
+    try:
+        def _emit_cb(stage: Stage, message: str) -> None:
+            _emit(store, run_id, stage, message=message)
+
+        return answer_question_agentic(driver, question, on_event=_emit_cb)
+    except ToolCallingUnsupported as exc:
+        logger.warning("LLM 不支持 tool calling，降级线性 RAG：%s", exc)
+        _emit(store, run_id, Stage.SEARCHING, message="向量召回 + 重排 + 图谱扩展")
+        _emit(store, run_id, Stage.CHECKING, message="组装上下文")
+        _emit(store, run_id, Stage.WRITING, message="生成带引用回答")
+        return answer_question(driver, question)
 
 
 async def run_delete(
