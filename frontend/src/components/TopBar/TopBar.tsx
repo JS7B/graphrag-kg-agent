@@ -1,4 +1,5 @@
 import styles from './TopBar.module.css'
+import { GearIcon } from '../ui/Icon/Icon'
 
 export type ViewKey = 'workbench' | 'library' | 'graph'
 
@@ -37,7 +38,7 @@ export function TopBar({ active, onChange, onOpenSettings }: TopBarProps) {
         <span className={styles.depLabel}>Neo4j ●</span>
         <span className={styles.depLabel}>LLM ●</span>
         <button className={styles.settingsBtn} onClick={onOpenSettings}>
-          ⚙ 设置
+          <GearIcon size={14} /> 设置
         </button>
       </div>
     </header>

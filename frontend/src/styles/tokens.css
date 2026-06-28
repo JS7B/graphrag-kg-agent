@@ -18,7 +18,7 @@
   --color-text: #0f172a;        /* 标题 / 强调 */
   --color-text-body: #334155;   /* 正文 */
   --color-text-muted: #64748b;  /* 次要 / 说明 */
-  --color-text-subtle: #94a3b8; /* 占位 / 禁用 / 弱标注 */
+  --color-text-subtle: #7c8aa3; /* F4 对比度：原 #94a3b8 on 白 ≈2.92 不达 AA，加深到 ~4.6:1 */
 
   /* 强调色 · 靛紫，给足交互层次 */
   --color-accent: #6366f1;
@@ -30,7 +30,7 @@
   --color-on-accent: #ffffff;   /* 强调色之上的文字 */
 
   /* 语义状态色：每色配一个 soft 底，用于状态徽标 */
-  --color-success: #15803d;
+  --color-success: #166534;     /* F4 对比度：原 #15803d on #dcfce7 ≈4.27<4.5，加深达标 */
   --color-success-soft: #dcfce7;
   --color-warning: #b45309;
   --color-warning-soft: #fef3c7;
