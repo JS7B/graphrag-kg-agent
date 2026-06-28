@@ -238,6 +238,8 @@ export function GraphView() {
             <input
               className={styles.searchInput}
               type="search"
+              inputMode="search"
+              enterKeyHint="search"
               value={searchTerm}
               placeholder="搜索实体…"
               onChange={(event) => setSearchTerm(event.target.value)}

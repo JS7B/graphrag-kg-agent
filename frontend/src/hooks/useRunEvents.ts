@@ -27,7 +27,7 @@ export function useRunEvents(runId: string | null) {
         setEvents((prev) => [...prev, event])
         setCurrentStage(event.stage)
       },
-      () => setError('SSE 连接中断'),
+      () => setError('SSE 连接中断，请确认后端正在运行，稍后重新提问重试'),
     )
     return unsubscribe
   }, [runId])

@@ -31,6 +31,7 @@ export function ChatComposer({ onSend, busy = false }: ChatComposerProps) {
           value={text}
           placeholder={busy ? 'Agent 正在思考，请稍候…' : '例如：多头注意力相比单头有什么好处？'}
           rows={2}
+          enterKeyHint="send"
           disabled={busy}
           onChange={(event) => setText(event.target.value)}
         />

@@ -60,6 +60,10 @@
   position: absolute;
   inset: 2px;
   background: linear-gradient(180deg, #6ec3ff, #c19eff);
+  opacity: 0.5; /* F13 静态低亮度（idle 待机时省 CPU，不跑明灭动画）*/
+}
+/* 工作中（data-busy=1）屏幕明灭，体现"在干活" */
+.canvas[data-busy="1"] .monitor::after {
   animation: ar-screen 2.4s ease-in-out infinite;
 }
 @keyframes ar-screen {

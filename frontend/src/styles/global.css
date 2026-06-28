@@ -79,6 +79,13 @@ a {
   }
 }
 
+/* F15 移动端字号：≤480px 正文提到 16px，防止 iOS 聚焦输入时自动缩放页面 */
+@media (max-width: 480px) {
+  :root {
+    --text-base: 16px;
+  }
+}
+
 /* 无障碍：屏幕阅读器专用（视觉隐藏，朗读可见）。用于补 h1 等语义、补视觉隐藏的标签。 */
 .sr-only {
   position: absolute;
