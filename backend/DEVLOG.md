@@ -208,3 +208,30 @@
   - **向量索引维度冲突**：首次跑评估，向量查询报"Index query vector has 3072 dimensions, but indexed vectors have 8"。根因是测试把索引建成了 8 维。评估脚本启动时强制 DROP + 用生产维度重建。
   - **全量评估超时**：4 篇样本 × 逐 chunk LLM 抽取 + 问答，单次跑超 10 分钟。改后台跑 + 先单篇验证全链路。
   - **LLM 抽取随机性**：同一篇样本两次跑，实体召回率从 78.6% 降到 57.1%——LLM 每次抽的实体集合不同。这是真实情况，评估的价值正是量化这个波动。
+
+## 2026-06-27 升级为 Agentic RAG（ReAct 检索-反思循环 + function calling）
+
+- 做了什么：把问答核心从「固定线性 pipeline」升级为 **Agentic RAG**——LLM 自主决定检索什么、判断证据够不够、不够就换查询再检索。新增 `app/qa/agent.py`（ReAct 循环 + 两工具 + on_event 回调 + 降级信号），扩展 `app/clients/llm.py::chat_with_tools`，改造 `app/runs/tasks.py::run_chat` 调 agent 版并支持降级。复用现有检索组件，零新依赖。
+
+- 这是什么：
+  - **Agentic RAG（智能体化检索增强生成）**：传统 RAG 是「查一次库 → 拼 context → 生成」的一次性流水线；Agentic RAG 把「查什么、查几次、证据够不够」的决策权交给 LLM，让它像人查资料一样多轮检索、反思、补充。本项目的实现是 **ReAct（Reason + Act）**：模型在「思考调哪个工具」和「直接回答」之间循环。
+  - **function calling（工具调用）**：OpenAI 协议的一个字段。你给 LLM 一份「工具清单」（每个工具有名字、参数 schema），LLM 决定要不要调、调哪个、传什么参数，返回结构化的 `tool_calls`；你执行后把结果塞回对话，LLM 再决策。相比让 LLM 自己输出「我要调用 xxx」的文本再正则解析，function calling 是协议级的、结构化的、可靠的。
+  - **ReAct 循环**：`while 轮次 < 上限：模型决策 → 若返回 tool_calls 就执行并把结果回传、轮次+1 → 若无 tool_calls 则生成最终答案`。两条终止路径：模型主动停（证据够了）、或硬上限兜底（防死循环）。
+  - **on_event 回调**：让 agent 循环把「现在在干嘛」通知外部（run_chat 用它 emit RunEvent），但 agent.py 本身不依赖 RunStore——这是「纯检索逻辑」和「进度广播」的解耦，agent 因此可独立单测。
+
+- 为什么需要：线性 RAG「查一次就答」，遇到复杂问题（需要多角度检索、或证据分散在多个 chunk）会答不全、答不准。Agentic RAG 让模型自己判断「这次检索够不够」「要不要换个查询再试」「要不要挖一下实体关系」，检索质量天花板更高。这也是把项目从「RAG demo」推向「真正可用的 Agent」的关键一步，对简历展示价值大。
+
+- 为什么这么做（关键取舍）：
+  - **纯自研轻量循环 + 原生 function calling，不引 LangGraph/LangChain**：单 agent + 内部工具场景，自写 while 循环是主流共识，代码量小、可控、零新依赖，最大化保留编排控制权（符合 AGENTS.md「不被第三方框架牵着走」决策边界）。框架的价值在多 agent 编排、状态机、checkpointer，这些本项目都用不上，引入只会增加黑盒。
+  - **工具粒度只做两个（vector_search + expand_entity）**：决策空间小、可控、token 省。rerank 不单独成工具（藏在 vector_search 内部），因为「搜完要不要重排」不该是模型决策点；额外的图谱路径查询 handoff 明确说「日后加」，现在加是超前设计。
+  - **降级只在 LLM 不支持 tool calling 时触发**：区分「能力不支持」vs「单次工具失败」。前者（端点返回 BadRequestError）整个 agent 跑不了，回退线性 pipeline；后者（如某次 Neo4j 查询出错）不降级，而是把错误字符串回传给模型，让它自己决策（符合 handoff「工具失败不崩，回传错误让模型决策」）。
+  - **证据池去重累积**：多轮检索的 chunk 用 `dict[chunk_id, ChunkHit]` 去重累积，保留完整 provenance，最终统一进 build_context 的 [n]↔Citation 闭环——引用可追溯红线不退化。
+  - **token 裁剪**：工具结果只回 chunk_id + 正文前 200 字，不塞整段 chunk 反复留历史。messages 历史随轮次增长，但 max_turns=4 硬上限保证可控。
+  - **检索用确定性 8 维向量（测试），LLM 决策与生成走真实调用**：test_agent 里 embed 用固定 8 维对齐测试 schema（避免真实 embedding 3072 维与测试 8 维 schema 冲突），但 `chat_with_tools`（决策）和 `chat`（生成）走真实 LLM——这才是要验证的 function calling 兼容性。
+
+- 踩了什么坑：
+  - **先实测再写代码**：动手写 agent 前先用一次性脚本验证 modelverse 端点（deepseek-v4-flash）是否支持 function calling——实测返回了合法的 `tool_calls`，确认可用后才动手。这是 handoff §五硬规则，避免写完才发现端点不支持、白费功夫。实测结果：端点完整支持 tools 字段。
+  - **OpenAI tool_calls 必须全执行全回传**：协议允许一轮返回多个 tool_calls（并行调用），必须遍历执行每一个并把每个结果都以 `{"role":"tool","tool_call_id":对应id}` 回传，漏掉任何一个模型都会因找不到对应 tool result 而报错。
+  - **assistant message 序列化要保留 tool_calls**：把 SDK 的 message 对象转成 dict 放回 messages 历史时，含 tool_calls 的情况必须保留 tool_calls 字段，否则下一轮模型上下文断裂。专门写了 `_assistant_msg_to_dict` 处理。
+  - **test_tasks.py 旧断言被破坏**：原测试断言 run_chat 事件序列恒等于 `[SEARCHING,CHECKING,WRITING,IDLE]`，改成 agent 后必然破坏。按计划同步更新：降级路径守住这个序列，agentic 主路径测 `[SEARCHING,LINKING,WRITING,IDLE]`，两条线都覆盖。
+  - **Docker 没起导致 test_agent 未端到端验证**：写完代码时 Docker Desktop 未启动，test_agent（需真 Neo4j）和其它集成测试一起正确 skip（非缺陷）。真 LLM function calling 兼容性已由手工脚本验证通过，但完整端到端（多轮检索 + 可追溯引用）待 Docker 起后补跑 `pytest tests/qa/test_agent.py`。

@@ -4,7 +4,7 @@ from app.extraction.models import DocumentExtraction, MergedEntity, MergedRelati
 from app.extraction.writer import write_extraction
 from app.graph.writer import ingest_document
 from app.parsing.models import Chunk, ParsedDocument, SourceLocation
-from tests.extraction.conftest import TEST_DIM
+from tests.conftest import TEST_DIM
 
 DOC_ID = "test_extr"
 
