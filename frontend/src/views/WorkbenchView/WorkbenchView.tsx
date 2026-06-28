@@ -82,7 +82,7 @@ export function WorkbenchView() {
           <CitationPanel citations={citations} activeChunkId={activeChunkId} />
         </div>
         <div className={styles.composer}>
-          <ChatComposer onSend={handleSend} />
+          <ChatComposer onSend={handleSend} busy={chatRunId !== null} />
         </div>
       </section>
       <aside className={styles.sideCol}>
