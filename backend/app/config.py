@@ -28,6 +28,13 @@ class Settings(BaseSettings):
 
     # 文档上传
     max_upload_mb: int = 10
+    # PDF 页数上限（防 PDF 炸弹：超大 PDF 拖垮解析与抽取）
+    max_pdf_pages: int = 200
+
+    # API 鉴权（公开仓库防裸 curl）。为空则跳过校验，本地开发无感；部署时在 .env 配真实值启用。
+    api_key: str = ""
+    # CORS 允许来源（逗号分隔）。生产地址走 .env，默认仅本地前端。
+    cors_origins: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILE,

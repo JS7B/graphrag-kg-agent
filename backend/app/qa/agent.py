@@ -203,7 +203,7 @@ def _generate_final_answer(
     evidence_pool: dict[str, ChunkHit],
     paths_acc: list[RelationPath],
     *,
-    on_event: Callable[[Stage, str], None] | None = None,
+    on_event: Callable[..., None] | None = None,
 ) -> Answer:
     """用证据池去重后的 chunks 生成带引用的最终答案。复用 build_context + prompt 闭环。"""
     if on_event:
@@ -227,7 +227,7 @@ def answer_question_agentic(
     top_k: int = 10,
     rerank_top_n: int = 5,
     database: str = "neo4j",
-    on_event: Callable[[Stage, str], None] | None = None,
+    on_event: Callable[..., None] | None = None,
 ) -> Answer:
     """Agentic RAG 问答：ReAct 循环，LLM 自主决定检索策略，证据足够后生成带引用答案。
 
@@ -247,6 +247,9 @@ def answer_question_agentic(
         except BadRequestError as exc:
             # 端点不支持 tools 的典型表现；上抛让 run_chat 降级到线性 pipeline。
             raise ToolCallingUnsupported(str(exc)) from exc
+        logger.debug("agent turn %d response: tool_calls=%s content=%s",
+                     turn, [tc.function.name for tc in (msg.tool_calls or [])],
+                     (msg.content or "")[:200])
 
         messages.append(_assistant_msg_to_dict(msg))
 
@@ -269,8 +272,6 @@ def answer_question_agentic(
                 tool_result = f"参数解析失败: {tc.function.arguments}"
             else:
                 stage, message = _tool_stage(tool_name)
-                if on_event:
-                    on_event(stage, message)
                 tool_result = _dispatch_tool(
                     tool_name,
                     arguments,
@@ -281,6 +282,14 @@ def answer_question_agentic(
                     evidence_pool=evidence_pool,
                     paths_acc=paths_acc,
                 )
+                # B12：工具调用事件携带结构化可观测字段
+                if on_event:
+                    on_event(
+                        stage, message,
+                        tool_name=tool_name,
+                        tool_input=arguments,
+                        tool_output=tool_result[:500],  # 裁剪防过长
+                    )
             messages.append(
                 {"role": "tool", "tool_call_id": tc.id, "content": tool_result}
             )

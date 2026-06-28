@@ -3,11 +3,12 @@
 graph / extraction / qa 三个板块的集成测试共用这套夹具（pytest 自动向上查找
 conftest，子目录无需重复定义）。
 
-向量索引维度的关键约定（教训 L6）：
-向量索引名固定（CHUNK_VECTOR_INDEX，与生产同名），是**全库共享单例**，不像
-test_ 前缀节点能靠 autouse 清理隔离。测试为加速用 TEST_DIM=8 重建它，**必须在
-session 结束时恢复成生产维度（EMBEDDING_DIM）**——否则 8 维残留会让真实问答的
-3072 维查询撞维度报错（db.index.vector.queryNodes: dimensions mismatch）。
+向量索引维度管理（L6 教训 + 实测约束）：
+Neo4j 不允许同一 property（:Chunk{embedding}）上建两个向量索引，故无法用"独立索引名"
+做物理隔离（实测 IndexAlreadyExists）。退而求其次：测试共用生产索引名 chunk_embedding，
+但 setup 时 DROP 后以 TEST_DIM=8 重建，teardown 时恢复成生产维度 EMBEDDING_DIM。
+teardown 是关键防线——若测试进程被强杀，残留 8 维会让真实问答报维度错；此时由应用
+lifespan 启动时的维度校验兜底（见 main.py）。
 """
 
 import pytest
@@ -35,11 +36,11 @@ def neo4j_driver():
 
 @pytest.fixture(scope="session")
 def ensured_schema(neo4j_driver):
-    """以测试维度（TEST_DIM）重建向量索引；session 结束恢复成生产维度。
+    """以测试维度（TEST_DIM）重建生产索引；session 结束恢复成生产维度。
 
-    teardown 恢复是关键：向量索引是全库共享单例，不恢复会污染后续真实查询（L6）。
+    teardown 恢复是关键防线：测试进程被强杀时残留 8 维会污染真实问答，此时靠
+    应用 lifespan 启动时的维度校验兜底恢复。
     """
-    # setup：DROP 后以测试维度重建，确保索引维度 = TEST_DIM
     neo4j_driver.execute_query(
         f"DROP INDEX {CHUNK_VECTOR_INDEX} IF EXISTS", database_="neo4j"
     )
@@ -47,7 +48,6 @@ def ensured_schema(neo4j_driver):
 
     yield neo4j_driver
 
-    # teardown：恢复成生产维度（EMBEDDING_DIM），避免 8 维残留污染真实查询
     prod_dim = get_settings().embedding_dim
     neo4j_driver.execute_query(
         f"DROP INDEX {CHUNK_VECTOR_INDEX} IF EXISTS", database_="neo4j"
@@ -63,3 +63,13 @@ def _clean(neo4j_driver):
         "MATCH (n) WHERE n.document_id STARTS WITH 'test_' DETACH DELETE n",
         database_="neo4j",
     )
+
+
+@pytest.fixture(autouse=True)
+def _disable_api_key_auth():
+    """测试统一禁用 API Key 鉴权，避免本地 .env 配了真实 API_KEY 时 TestClient 裸调 401。
+
+    鉴权是部署层关注点，测试不验证它（鉴权逻辑由 middleware.py 自身保证）。
+    get_settings() 是 lru_cache 单例，改实例属性即全局生效。
+    """
+    get_settings().api_key = ""

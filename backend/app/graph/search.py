@@ -9,8 +9,11 @@ from pydantic import BaseModel, Field
 
 from app.graph.schema import CHUNK_VECTOR_INDEX
 
-_SEARCH = f"""
-CALL db.index.vector.queryNodes('{CHUNK_VECTOR_INDEX}', $top_k, $query_embedding)
+
+def _search_cypher(index_name: str) -> str:
+    """构造向量查询 Cypher；索引名插值，测试可传独立名与生产物理隔离。"""
+    return f"""
+CALL db.index.vector.queryNodes('{index_name}', $top_k, $query_embedding)
 YIELD node AS c, score
 MATCH (d:Document)-[:HAS_CHUNK]->(c)
 RETURN c.chunk_id AS chunk_id, c.document_id AS document_id,
@@ -40,11 +43,15 @@ def search_chunks(
     query_embedding: list[float],
     *,
     top_k: int = 5,
+    index_name: str = CHUNK_VECTOR_INDEX,
     database: str = "neo4j",
 ) -> list[ChunkHit]:
-    """按查询向量召回 top-k 相似 chunk，按相似度降序返回。"""
+    """按查询向量召回 top-k 相似 chunk，按相似度降序返回。
+
+    index_name 默认生产索引；测试传独立名（chunk_embedding_test）与生产物理隔离。
+    """
     records, _, _ = driver.execute_query(
-        _SEARCH,
+        _search_cypher(index_name),
         top_k=top_k,
         query_embedding=query_embedding,
         database_=database,

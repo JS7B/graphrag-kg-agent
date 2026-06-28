@@ -45,15 +45,26 @@ class RunKind(str, Enum):
 
 
 class RunEvent(BaseModel):
-    """单条进度事件，SSE 流的单位。answer 仅问答终态事件携带（方案 a）。"""
+    """单条进度事件，SSE 流的单位。
+
+    answer 仅问答终态事件携带（方案 a）。tool_*/token_usage 为可观测字段，
+    agent 工具调用事件携带（B12），其余事件为 None，不破坏现有 SSE 契约。
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
     stage: Stage
     status: RunStatus = RunStatus.RUNNING
     message: str = ""
-    answer: dict | None = Field(default=None, alias="answer")
-    timestamp_ms: int = Field(default_factory=lambda: int(time.time() * 1000))
+    answer: dict | None = None
+    # 可观测字段（B12）：agent 工具调用时附带，让"可观测"从模糊变精确
+    tool_name: str | None = None
+    tool_input: dict | None = None
+    tool_output: str | None = None
+    token_usage: dict | None = None
+    timestamp_ms: int = Field(
+        default_factory=lambda: int(time.time() * 1000), alias="timestampMs"
+    )
 
 
 class Run(BaseModel):

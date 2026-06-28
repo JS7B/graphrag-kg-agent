@@ -8,6 +8,7 @@ import re
 
 import fitz
 
+from app.config import get_settings
 from app.parsing.errors import ParseError
 from app.parsing.models import Block
 
@@ -22,6 +23,15 @@ def parse_pdf(path: str) -> tuple[str, list[Block]]:
         doc = fitz.open(path)
     except Exception as exc:  # PyMuPDF 抛 FileDataError 等
         raise ParseError(path=path, reason=f"无法打开 PDF: {exc}") from exc
+
+    # B15：PDF 页数上限，防 PDF 炸弹拖垮解析与抽取
+    max_pages = get_settings().max_pdf_pages
+    if doc.page_count > max_pages:
+        doc.close()
+        raise ParseError(
+            path=path,
+            reason=f"PDF 页数 {doc.page_count} 超过上限 {max_pages}",
+        )
 
     parts: list[str] = []
     blocks: list[Block] = []
