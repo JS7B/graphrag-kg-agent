@@ -52,8 +52,10 @@ class RunEvent(BaseModel):
     stage: Stage
     status: RunStatus = RunStatus.RUNNING
     message: str = ""
-    answer: dict | None = Field(default=None, alias="answer")
-    timestamp_ms: int = Field(default_factory=lambda: int(time.time() * 1000))
+    answer: dict | None = None
+    timestamp_ms: int = Field(
+        default_factory=lambda: int(time.time() * 1000), alias="timestampMs"
+    )
 
 
 class Run(BaseModel):

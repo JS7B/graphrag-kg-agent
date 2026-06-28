@@ -1,12 +1,19 @@
 """后台任务：把入库/问答/删除的同步链路包成「带进度事件」的异步执行单元。
 
-FastAPI BackgroundTasks 在事件循环线程跑——入库链路是同步代码会短暂阻塞事件循环，
-但个人项目单用户场景可接受（后续如需可包 starlette.concurrency.run_in_threadpool）。
+BackgroundTasks 在事件循环线程跑，但入库/问答的同步阻塞调用（parse/embed/llm/
+execute_query）会独占事件循环——导致 SSE 推送冻结、前端进度条卡住、像素动画实时性
+失效。故把阻塞段用 asyncio.to_thread 丢到线程池，让事件循环空闲时能即时推送 SSE。
+
+跨线程 emit 处理（关键）：run_chat 把 answer_question_agentic 整个包进 to_thread，
+agent 在工作线程内通过 on_event 回调 emit 事件。RunStore（dict/asyncio.Queue）非
+线程安全，工作线程不能直接调 store.append_event。用 loop.call_soon_threadsafe 把
+emit 操作投递回事件循环线程执行，保证 RunStore 只在单线程访问。
 
 每个任务全程 try/except：BackgroundTasks 会吞掉异常，失败必须自己 emit error +
 run.status=failed，否则前端 SSE 流永不关闭、像素 Agent 卡在中间状态。
 """
 
+import asyncio
 import logging
 import os
 import tempfile
@@ -53,7 +60,7 @@ async def run_ingest(
             tmp.write(file_bytes)
             tmp_path = tmp.name
         try:
-            doc = parse_file(tmp_path, document_id=source_name)
+            doc = await asyncio.to_thread(parse_file, tmp_path, document_id=source_name)
         finally:
             try:
                 os.remove(tmp_path)
@@ -61,11 +68,14 @@ async def run_ingest(
                 pass
 
         _emit(store, run_id, Stage.EXTRACTING, message="生成向量并写入图库")
-        embeddings = embed_chunks(doc)
-        ingest_document(driver, doc, embeddings, name=source_name, source_type=doc_type)
+        # embed/ingest 是同步阻塞（HTTP/Cypher），包 to_thread 不冻结事件循环
+        embeddings = await asyncio.to_thread(embed_chunks, doc)
+        await asyncio.to_thread(
+            ingest_document, driver, doc, embeddings, name=source_name, source_type=doc_type
+        )
 
         _emit(store, run_id, Stage.INDEXING, message="抽取实体与关系")
-        stats = extract_and_ingest(driver, doc)
+        stats = await asyncio.to_thread(extract_and_ingest, driver, doc)
 
         _emit(
             store, run_id, Stage.IDLE, RunStatus.SUCCEEDED,
@@ -94,7 +104,7 @@ async def run_chat(
     序列 emit 事件（searching→checking→writing），保证问答不挂、前端契约可预期。
     """
     try:
-        answer = _run_chat_agentic(driver, store, run_id, question)
+        answer = await _run_chat_agentic(driver, store, run_id, question)
     except Exception as exc:  # noqa: BLE001
         logger.exception("问答任务失败 run=%s", run_id)
         _emit(store, run_id, Stage.ERROR, RunStatus.FAILED, message=f"回答失败: {exc}")
@@ -107,19 +117,30 @@ async def run_chat(
     )
 
 
-def _run_chat_agentic(driver: Driver, store: RunStore, run_id: str, question: str):
-    """跑 Agentic RAG；端点不支持 tool calling 时降级线性 pipeline。返回 Answer。"""
-    try:
-        def _emit_cb(stage: Stage, message: str) -> None:
-            _emit(store, run_id, stage, message=message)
+async def _run_chat_agentic(driver: Driver, store: RunStore, run_id: str, question: str):
+    """跑 Agentic RAG；端点不支持 tool calling 时降级线性 pipeline。返回 Answer。
 
-        return answer_question_agentic(driver, question, on_event=_emit_cb)
+    answer_question_agentic 是同步且最重（多轮 LLM 调用），整个包进 asyncio.to_thread
+    避免冻结事件循环。agent 在工作线程内通过 on_event 回调 emit 事件，RunStore 非线程
+    安全，故用 loop.call_soon_threadsafe 把 emit 投递回事件循环线程执行。
+    """
+    loop = asyncio.get_running_loop()
+
+    def _emit_cb(stage: Stage, message: str) -> None:
+        # 工作线程内调用，通过 call_soon_threadsafe 把 append_event 调度回事件循环线程
+        event = RunEvent(stage=stage, message=message)
+        loop.call_soon_threadsafe(store.append_event, run_id, event)
+
+    try:
+        return await asyncio.to_thread(
+            answer_question_agentic, driver, question, on_event=_emit_cb
+        )
     except ToolCallingUnsupported as exc:
         logger.warning("LLM 不支持 tool calling，降级线性 RAG：%s", exc)
         _emit(store, run_id, Stage.SEARCHING, message="向量召回 + 重排 + 图谱扩展")
         _emit(store, run_id, Stage.CHECKING, message="组装上下文")
         _emit(store, run_id, Stage.WRITING, message="生成带引用回答")
-        return answer_question(driver, question)
+        return await asyncio.to_thread(answer_question, driver, question)
 
 
 async def run_delete(
@@ -134,29 +155,34 @@ async def run_delete(
     """
     try:
         _emit(store, run_id, Stage.DELETING, message=f"删除 {document_id}")
-        # 先删本文档的所有 Chunk（及其 MENTIONS 关系），再删 Document，
-        # 最后清理因本文档删除而变成「无任何 chunk 指向」的孤立 Entity。
+        # 两段 Cypher 逻辑上是一组（删 chunk/document + 清理孤立 entity），合并成一个
+        # 同步 helper 整体丢进线程池，只创建一个工作线程。
         # Entity 没有直接连 Document，孤立性靠 MENTIONS 关系判定。
-        driver.execute_query(
-            """
-            MATCH (d:Document {document_id: $document_id})
-            OPTIONAL MATCH (d)-[:HAS_CHUNK]->(c:Chunk)
-            DETACH DELETE c
-            WITH d
-            DETACH DELETE d
-            """,
-            document_id=document_id,
-            database_="neo4j",
-        )
-        driver.execute_query(
-            """
-            MATCH (e:Entity)
-            WHERE NOT (c:Chunk)-[:MENTIONS]->(e)
-            DETACH DELETE e
-            """,
-            database_="neo4j",
-        )
+        await asyncio.to_thread(_do_delete, driver, document_id)
         _emit(store, run_id, Stage.IDLE, RunStatus.SUCCEEDED, message="删除完成")
     except Exception as exc:  # noqa: BLE001
         logger.exception("删除任务失败 run=%s", run_id)
         _emit(store, run_id, Stage.ERROR, RunStatus.FAILED, message=f"删除失败: {exc}")
+
+
+def _do_delete(driver: Driver, document_id: str) -> None:
+    """删除文档的同步 Cypher：先删 Chunk/Document，再清理孤立 Entity。"""
+    driver.execute_query(
+        """
+        MATCH (d:Document {document_id: $document_id})
+        OPTIONAL MATCH (d)-[:HAS_CHUNK]->(c:Chunk)
+        DETACH DELETE c
+        WITH d
+        DETACH DELETE d
+        """,
+        document_id=document_id,
+        database_="neo4j",
+    )
+    driver.execute_query(
+        """
+        MATCH (e:Entity)
+        WHERE NOT (c:Chunk)-[:MENTIONS]->(e)
+        DETACH DELETE e
+        """,
+        database_="neo4j",
+    )

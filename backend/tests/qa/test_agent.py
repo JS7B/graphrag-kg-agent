@@ -48,7 +48,11 @@ def _embed_vec():
 
 
 def _seed_and_patch(monkeypatch, ensured_schema):
-    """seed 一篇带 8 维向量的文档 + monkeypatch llm.embed 返回 8 维（维度对齐 schema）。"""
+    """seed 一篇带 8 维向量的文档 + monkeypatch llm.embed 返回 8 维（维度对齐 schema）。
+
+    search_chunks 无需 patch：ensured_schema 把生产索引重建为 TEST_DIM=8，agent 默认查
+    chunk_embedding 正好命中测试数据。
+    """
     ingest_document(ensured_schema, _DOC_OBJ, [_embed_vec()], dim=TEST_DIM)
     monkeypatch.setattr(agent_mod.llm, "embed", lambda texts: [_embed_vec() for _ in texts])
 

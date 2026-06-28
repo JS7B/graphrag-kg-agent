@@ -24,11 +24,19 @@ _CONSTRAINTS = (
 )
 
 
-def ensure_schema(driver: Driver, *, dim: int | None = None, database: str = "neo4j") -> None:
+def ensure_schema(
+    driver: Driver,
+    *,
+    dim: int | None = None,
+    index_name: str = CHUNK_VECTOR_INDEX,
+    database: str = "neo4j",
+) -> None:
     """创建唯一约束与 chunk 向量索引，并等待索引上线。
 
     dim 缺省取配置 embedding_dim；它决定向量索引维度，须与 embedding 模型实际输出一致。
     indexConfig 不接受 Cypher 参数，维度只能插值进 DDL —— dim 是可信 int 配置，插值安全。
+    index_name 默认生产索引名；测试传独立名（chunk_embedding_test）实现物理隔离，
+    根治 L6：测试索引与生产分离，即使 teardown 不执行也不污染生产索引。
     """
     if dim is None:
         dim = get_settings().embedding_dim
@@ -37,7 +45,7 @@ def ensure_schema(driver: Driver, *, dim: int | None = None, database: str = "ne
         driver.execute_query(cypher, database_=database)
 
     driver.execute_query(
-        f"CREATE VECTOR INDEX {CHUNK_VECTOR_INDEX} IF NOT EXISTS "
+        f"CREATE VECTOR INDEX {index_name} IF NOT EXISTS "
         "FOR (c:Chunk) ON (c.embedding) "
         "OPTIONS { indexConfig: { "
         f"`vector.dimensions`: {dim}, "
@@ -45,4 +53,4 @@ def ensure_schema(driver: Driver, *, dim: int | None = None, database: str = "ne
         database_=database,
     )
     driver.execute_query("CALL db.awaitIndexes(120)", database_=database)
-    logger.info("Neo4j schema ready: constraints + vector index (dim=%d)", dim)
+    logger.info("Neo4j schema ready: constraints + vector index %s (dim=%d)", index_name, dim)
