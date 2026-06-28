@@ -235,3 +235,26 @@
   - **assistant message 序列化要保留 tool_calls**：把 SDK 的 message 对象转成 dict 放回 messages 历史时，含 tool_calls 的情况必须保留 tool_calls 字段，否则下一轮模型上下文断裂。专门写了 `_assistant_msg_to_dict` 处理。
   - **test_tasks.py 旧断言被破坏**：原测试断言 run_chat 事件序列恒等于 `[SEARCHING,CHECKING,WRITING,IDLE]`，改成 agent 后必然破坏。按计划同步更新：降级路径守住这个序列，agentic 主路径测 `[SEARCHING,LINKING,WRITING,IDLE]`，两条线都覆盖。
   - **Docker 没起导致 test_agent 未端到端验证**：写完代码时 Docker Desktop 未启动，test_agent（需真 Neo4j）和其它集成测试一起正确 skip（非缺陷）。真 LLM function calling 兼容性已由手工脚本验证通过，但完整端到端（多轮检索 + 可追溯引用）待 Docker 起后补跑 `pytest tests/qa/test_agent.py`。
+
+## 2026-06-28 PR 审计整改（B1-B15）
+
+- 做了什么：按 PR 审计报告分三批整改 15 项（B1-B15）：补缺失依赖、加 API Key 鉴权 + CORS、LLM 超时防护、统一启动命令、BackgroundTasks 异步化、RunStore TTL、契约统一、embedding 维度校验、索引维度兜底、500 不泄密、RunEvent 可观测字段、LLM debug 日志、问答并发限流、PDF 页数上限。
+
+- 这是什么：
+  - **API Key 鉴权中间件**：在 FastAPI 请求进入路由前校验 `X-API-Key` header，不通过返 401。公开仓库防任何人 curl 删库/耗 token/读全图谱。
+  - **asyncio.to_thread + call_soon_threadsafe**：把同步阻塞调用丢到线程池跑，让事件循环空闲处理 SSE 推送；工作线程内 emit 事件用 `call_soon_threadsafe` 投递回事件循环线程，保证 RunStore 单线程访问。
+  - **向量索引维度兜底**：应用启动时校验索引维度与配置一致，不匹配（如测试残留）则 DROP+重建。
+
+- 为什么需要：审计暴露了从"能跑"到"可公开可复现"的差距——缺失依赖让干净环境起不来、零鉴权让公开仓库裸奔、同步阻塞让 SSE 实时性失效、维度不匹配延迟暴露。这些是项目定位（公开 GitHub + 简历展示）的硬要求。
+
+- 为什么这么做（关键取舍）：
+  - **B5 异步化的跨线程难点**：run_chat 把 answer_question_agentic 整个包进 to_thread，agent 在工作线程内通过 on_event 回调 emit 事件。RunStore（dict/asyncio.Queue）非线程安全，工作线程不能直接调 store.append_event。用 `loop.call_soon_threadsafe(store.append_event, ...)` 把 emit 操作调度回事件循环线程——这是 Python 异步跨线程通信的标准做法。run_ingest/run_delete 的 emit 在 await 返回后（主循环线程）调用，无需特殊处理。
+  - **B10 维度根治方案被 Neo4j 否决**：原计划用独立索引名（chunk_embedding_test）与生产物理隔离，实测 Neo4j 报 `IndexAlreadyExists: There already exists an index (:Chunk {embedding})`——**Neo4j 不允许同一 property 上建两个向量索引**。退而求其次：测试共用生产索引名，setup 重建为 TEST_DIM、teardown 恢复生产维度，再加应用 lifespan 启动时维度校验作兜底（测试强杀未恢复时，下次启动自动修正）。
+  - **B2 鉴权默认空跳过**：API_KEY 为空时不校验，本地开发无感；部署时 .env 填值即启用。测试用 autouse fixture 显式置空，避免本地配了 key 时 TestClient 裸调 401。
+  - **B14 限流只聚焦 run_chat**：问答是最耗 LLM 的链路（多轮 ReAct），Semaphore 限它即可；run_ingest/run_delete 单文档场景并发低，不限。
+
+- 踩了什么坑：
+  - **Neo4j 单 property 单向量索引限制**：B10 原方案（独立索引名隔离）实测不可行，CREATE VECTOR INDEX ... IF NOT EXISTS 把 IndexAlreadyExists 错误静默吞掉，表现为"建成功但 SHOW INDEXES 没有"。教训：对数据库特性的方案假设必须实测验证，不能只看 API 文档。
+  - **asyncio.to_thread 必须 await**：第一版 `_run_chat_agentic` 写成 `return asyncio.to_thread(...)` 漏了 await，返回的是协程对象而非结果。to_thread 是协程函数，必须 await。
+  - **test_agent 空证据测试用正交向量无效**：想用正交向量让召回为空，但 Neo4j 向量索引总会返回 top-k 最近邻（相似度低也返回）。改 mock search_chunks 返回空列表才是真正测空证据场景。
+  - **B12 on_event 签名扩展破坏 lambda 测试**：on_event 从 `(stage, message)` 扩展为 `(stage, message, **extra)` 后，测试里的 `lambda s, m:` 报 unexpected keyword argument。加 `**extra` 适配。
