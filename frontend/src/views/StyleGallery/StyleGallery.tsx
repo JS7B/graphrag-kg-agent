@@ -23,7 +23,7 @@ export function StyleGallery() {
   return (
     <div className={styles.page}>
       <header className={styles.masthead}>
-        <Eyebrow>Design System · GraphRAG 工作台</Eyebrow>
+        <Eyebrow>Design System · Archigraph</Eyebrow>
         <h1 className={styles.title}>设计系统预览</h1>
         <p className={styles.lede}>
           冷调 slate 中性色、靛紫强调、等宽溯源数据。下面是设计 token 与全部共享基件的变体。

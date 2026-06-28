@@ -50,7 +50,7 @@ export function TopBar({ active, onChange, onOpenSettings }: TopBarProps) {
     <header className={styles.bar}>
       <div className={styles.brand}>
         <span className={styles.dot} />
-        GraphRAG 工作台
+        Archigraph · 档图
       </div>
       <nav className={styles.tabs} aria-label="主导航">
         {TABS.map((t) => (

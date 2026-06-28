@@ -73,7 +73,7 @@ export function WorkbenchView() {
 
   return (
     <div className={styles.workbench}>
-      <h1 className="sr-only">GraphRAG 知识库工作台</h1>
+      <h1 className="sr-only">Archigraph · 档图知识工作台</h1>
       <section className={styles.mainCol}>
         <div className={styles.chatThread}>
           <ChatThread messages={messages} onCitationClick={setActiveChunkId} />
