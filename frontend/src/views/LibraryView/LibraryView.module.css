@@ -163,3 +163,14 @@
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
 }
+
+/* F8 响应式：<860px 头部标题与操作区堆叠（卡片列表本就 wrap，无需改）*/
+@media (max-width: 860px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .actions {
+    justify-content: flex-start;
+  }
+}

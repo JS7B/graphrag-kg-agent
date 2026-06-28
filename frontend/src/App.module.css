@@ -16,7 +16,9 @@
   right: 0;
   width: 320px;
   bottom: 0;
+  z-index: var(--z-overlay); /* F11 启用 z-index token，确保覆盖层盖在主内容之上 */
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
   padding: var(--space-4);
+  box-shadow: var(--shadow-md);
 }

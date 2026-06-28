@@ -67,3 +67,18 @@
   color: var(--color-error);
   font-size: var(--text-sm);
 }
+
+/* F8 响应式：<860px 双栏堆叠成单列，主区与侧栏各自给最小高度避免挤扁 */
+@media (max-width: 860px) {
+  .workbench {
+    flex-direction: column;
+  }
+
+  .chatThread {
+    min-height: calc(var(--space-8) * 8);
+  }
+
+  .stagePanel {
+    min-height: calc(var(--space-8) * 9);
+  }
+}

@@ -29,13 +29,13 @@ export function WorkbenchView() {
     if (last.status === 'succeeded' && last.answer) {
       setMessages((prev) => [
         ...prev,
-        { id: `a-${last.timestamp_ms}`, role: 'agent', text: last.answer!.text, answer: last.answer! },
+        { id: `a-${last.timestampMs}`, role: 'agent', text: last.answer!.text, answer: last.answer! },
       ])
       setChatRunId(null)
     } else if (last.status === 'failed') {
       setMessages((prev) => [
         ...prev,
-        { id: `a-${last.timestamp_ms}`, role: 'agent', text: `回答失败：${last.message}` },
+        { id: `a-${last.timestampMs}`, role: 'agent', text: `回答失败：${last.message}` },
       ])
       setChatRunId(null)
     }
@@ -73,6 +73,7 @@ export function WorkbenchView() {
 
   return (
     <div className={styles.workbench}>
+      <h1 className="sr-only">Archigraph · 档图知识工作台</h1>
       <section className={styles.mainCol}>
         <div className={styles.chatThread}>
           <ChatThread messages={messages} onCitationClick={setActiveChunkId} />
@@ -81,7 +82,7 @@ export function WorkbenchView() {
           <CitationPanel citations={citations} activeChunkId={activeChunkId} />
         </div>
         <div className={styles.composer}>
-          <ChatComposer onSend={handleSend} />
+          <ChatComposer onSend={handleSend} busy={chatRunId !== null} />
         </div>
       </section>
       <aside className={styles.sideCol}>

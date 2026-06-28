@@ -4,18 +4,21 @@ import styles from './ChatComposer.module.css'
 
 interface ChatComposerProps {
   onSend: (text: string) => void
+  /** 运行中（SSE 未结束）时禁用，避免双订阅状态混乱。 */
+  busy?: boolean
 }
 
-export function ChatComposer({ onSend }: ChatComposerProps) {
+export function ChatComposer({ onSend, busy = false }: ChatComposerProps) {
   const [text, setText] = useState('')
   const trimmedText = text.trim()
+  const disabled = !trimmedText || busy
 
   return (
     <form
       className={styles.composer}
       onSubmit={(event) => {
         event.preventDefault()
-        if (trimmedText) {
+        if (trimmedText && !busy) {
           onSend(trimmedText)
           setText('')
         }
@@ -26,13 +29,15 @@ export function ChatComposer({ onSend }: ChatComposerProps) {
         <textarea
           className={styles.input}
           value={text}
-          placeholder="例如：多头注意力相比单头有什么好处？"
+          placeholder={busy ? 'Agent 正在思考，请稍候…' : '例如：多头注意力相比单头有什么好处？'}
           rows={2}
+          enterKeyHint="send"
+          disabled={busy}
           onChange={(event) => setText(event.target.value)}
         />
       </label>
-      <Button className={styles.sendButton} disabled={!trimmedText} type="submit" variant="primary">
-        发送
+      <Button className={styles.sendButton} disabled={disabled} type="submit" variant="primary">
+        {busy ? '思考中…' : '发送'}
       </Button>
     </form>
   )

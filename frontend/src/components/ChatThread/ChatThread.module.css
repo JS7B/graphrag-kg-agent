@@ -73,7 +73,8 @@
   margin-left: var(--space-1);
   border: 1px solid var(--color-accent-border);
   border-radius: var(--radius-full);
-  padding: var(--space-0) var(--space-1);
+  padding: var(--space-1) var(--space-2); /* F3 触控目标：4×8px，接近 44px 标准 */
+  min-height: 28px;
   color: var(--color-accent);
   background: var(--color-accent-soft);
   font-size: var(--text-xs);

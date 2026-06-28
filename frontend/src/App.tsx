@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { TopBar, type ViewKey } from './components/TopBar/TopBar'
 import { WorkbenchView } from './views/WorkbenchView/WorkbenchView'
 import { LibraryView } from './views/LibraryView/LibraryView'
@@ -16,6 +16,19 @@ const showGallery =
 export default function App() {
   const [view, setView] = useState<ViewKey>('workbench')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // F6 焦点管理：打开时记下触发按钮，移焦到关闭按钮；关闭时还焦回去。
+  const triggerRef = useRef<HTMLElement | null>(null)
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    if (settingsOpen) {
+      triggerRef.current = document.activeElement as HTMLElement | null
+      closeBtnRef.current?.focus()
+    } else if (triggerRef.current) {
+      triggerRef.current.focus()
+      triggerRef.current = null
+    }
+  }, [settingsOpen])
 
   if (showGallery) {
     return <StyleGallery />
@@ -36,7 +49,7 @@ export default function App() {
       {settingsOpen && (
         <div className={styles.settingsPlaceholder}>
           <SettingsView />
-          <button onClick={() => setSettingsOpen(false)}>关闭</button>
+          <button ref={closeBtnRef} onClick={() => setSettingsOpen(false)}>关闭</button>
         </div>
       )}
     </div>

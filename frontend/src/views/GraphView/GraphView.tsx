@@ -238,6 +238,8 @@ export function GraphView() {
             <input
               className={styles.searchInput}
               type="search"
+              inputMode="search"
+              enterKeyHint="search"
               value={searchTerm}
               placeholder="搜索实体…"
               onChange={(event) => setSearchTerm(event.target.value)}
@@ -297,8 +299,29 @@ export function GraphView() {
             </div>
           ) : (
             <div className={styles.emptyState}>
-              <h2 className={styles.emptyTitle}>点击图中节点查看实体详情</h2>
-              <p className={styles.emptyCopy}>这里会显示实体类型、ID，以及它与其他实体之间的关系。</p>
+              <h2 className={styles.emptyTitle}>实体列表</h2>
+              <p className={styles.emptyCopy}>
+                点击图中节点，或用下方列表选择实体查看详情（可键盘 Tab/方向键访问）。
+              </p>
+              {/* F5 无障碍：Cytoscape canvas 节点不可键盘访问，并行提供按钮列表作为可达路径。 */}
+              {graphData && graphData.nodes.length > 0 ? (
+                <ul className={styles.entityList} aria-label="实体列表">
+                  {graphData.nodes.map((node) => (
+                    <li key={node.id}>
+                      <button
+                        type="button"
+                        className={styles.entityListBtn}
+                        onClick={() => setSelectedNode(node)}
+                      >
+                        <span className={styles.entityListLabel}>{node.label}</span>
+                        <Chip tone="accent">{node.entityType}</Chip>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.noRelations}>知识库暂无实体。</p>
+              )}
             </div>
           )}
         </Panel>

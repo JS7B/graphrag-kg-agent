@@ -71,6 +71,17 @@ export function useAgentPosition(stage: Stage): AgentPosition {
     const start = currentXRef.current
     if (start === target) return // 已在目标点，无需动
 
+    // F1 无障碍：尊重 prefers-reduced-motion。开启时跳过 rAF 插值，直接瞬移到目标位。
+    // （CSS 那层已对动画做 reduced-motion 兜底，但 JS rAF 这层不受 CSS 控制，需单独处理。）
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduceMotion) {
+      if (dude) dude.style.left = `${target}%`
+      if (shadow) shadow.style.left = `${target}%`
+      currentXRef.current = target
+      hasMovedRef.current = true
+      return
+    }
+
     // 中断即转：若上一段移动尚未结束就来了新目标，用提速时长。
     const duration = hasMovedRef.current ? MOVE_MS_INTERRUPTED : MOVE_MS
     hasMovedRef.current = true
