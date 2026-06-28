@@ -32,18 +32,20 @@ docker compose up -d neo4j
 #    用 neo4j / <你在 .env 设的 NEO4J_PASSWORD> 登录
 ```
 
-后端、前端启动命令将在对应模块实现后补充。
+后端、前端启动详见 [`运行说明.md`](运行说明.md)。
 
 ### 后端 API（已就绪）
 
 ```bash
+conda activate myself     # 激活 Python 环境（如用 conda）
 cd backend
-# 在 myself conda 环境
-uvicorn app.main:create_app --factory --reload
-# API: http://localhost:8000，健康检查 /health、/health/deps
+python -m uvicorn app.main:app --reload --port 8000
+# API: http://localhost:8000，交互文档 /docs，健康检查 /health、/health/deps
 ```
 
 核心端点：文档上传入库 `POST /api/documents`、问答 `POST /api/chat`（异步 + SSE 进度流 `/api/runs/{runId}/events/stream`）、图谱查询 `GET /api/graph/entities`。
+
+> 安全：若在 `.env` 配置了 `API_KEY`，所有非 `/health` 接口需在请求头带 `X-API-Key`；为空（默认）则不鉴权，便于本地开发。
 
 ## 评估
 

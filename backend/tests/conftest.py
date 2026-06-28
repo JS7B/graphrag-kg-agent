@@ -63,3 +63,13 @@ def _clean(neo4j_driver):
         "MATCH (n) WHERE n.document_id STARTS WITH 'test_' DETACH DELETE n",
         database_="neo4j",
     )
+
+
+@pytest.fixture(autouse=True)
+def _disable_api_key_auth():
+    """测试统一禁用 API Key 鉴权，避免本地 .env 配了真实 API_KEY 时 TestClient 裸调 401。
+
+    鉴权是部署层关注点，测试不验证它（鉴权逻辑由 middleware.py 自身保证）。
+    get_settings() 是 lru_cache 单例，改实例属性即全局生效。
+    """
+    get_settings().api_key = ""

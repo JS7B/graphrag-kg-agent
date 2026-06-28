@@ -129,9 +129,16 @@ def test_upload_too_large(ensured_schema, monkeypatch):
 
 # ── DELETE 异步 ──
 
-def test_delete_returns_run_id(ensured_schema):
+def test_delete_requires_confirm(ensured_schema):
+    """B2：删除是危险操作，不带 confirm=true 应被拒（防误删/恶意 curl）。"""
     client, _ = _client()
     resp = client.delete("/api/documents/test_del.md")
+    assert resp.status_code == 400
+
+
+def test_delete_returns_run_id(ensured_schema):
+    client, _ = _client()
+    resp = client.delete("/api/documents/test_del.md?confirm=true")
     assert resp.status_code == 200
     body = resp.json()
     assert "runId" in body

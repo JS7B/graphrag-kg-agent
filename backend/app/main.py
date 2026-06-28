@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.clients.graph import close, get_driver
+from app.config import get_settings
 from app.errors import register_exception_handlers
 from app.graph import ensure_schema
 from app.logging_conf import setup_logging
@@ -42,12 +43,35 @@ def create_app() -> FastAPI:
     setup_logging()
     app = FastAPI(title="GraphRAG KG Agent API", lifespan=lifespan)
     register_exception_handlers(app)
+    _register_middleware(app)
     app.include_router(health_router)
     app.include_router(chat_router)
     app.include_router(documents_router)
     app.include_router(runs_router)
     app.include_router(graph_router)
     return app
+
+
+def _register_middleware(app: FastAPI) -> None:
+    """装配中间件：CORS（限定来源）+ API Key 鉴权。
+
+    注意 add_middleware 的执行顺序与添加顺序相反（后加的先执行）。这里鉴权加在
+    CORS 之后，使鉴权在 CORS 处理之后生效；两者职责独立，顺序无强约束。
+    """
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from app.middleware import ApiKeyMiddleware
+
+    settings = get_settings()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()
+        ],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.add_middleware(ApiKeyMiddleware)
 
 
 app = create_app()

@@ -12,7 +12,14 @@ _PLACEHOLDER_MARKERS = ("your-", "please-change")
 
 def _client() -> OpenAI:
     settings = get_settings()
-    return OpenAI(base_url=settings.openai_base_url, api_key=settings.openai_api_key)
+    return OpenAI(
+        base_url=settings.openai_base_url,
+        api_key=settings.openai_api_key,
+        # 默认无超时会让偶发网络卡顿拖死整个请求（httpx 默认 600s）；
+        # 60s 总超时 + 10s 连接超时对 chat/embed 够用，重试交给 SDK。
+        timeout=httpx.Timeout(60, connect=10),
+        max_retries=3,
+    )
 
 
 def is_configured() -> bool:
@@ -37,7 +44,10 @@ def chat(messages: list[dict], *, response_format: dict | None = None) -> str:
     if response_format is not None:
         kwargs["response_format"] = response_format
     resp = _client().chat.completions.create(**kwargs)
-    return resp.choices[0].message.content
+    # 部分兼容端点在异常输入下可能返回空 choices，直接取 [0] 会 IndexError。
+    if not resp.choices:
+        raise RuntimeError("LLM 返回空 choices，可能是模型或输入异常")
+    return resp.choices[0].message.content or ""
 
 
 def chat_with_tools(
@@ -59,6 +69,8 @@ def chat_with_tools(
         tools=tools,
         tool_choice=tool_choice,
     )
+    if not resp.choices:
+        raise RuntimeError("LLM 返回空 choices，可能是模型或输入异常")
     return resp.choices[0].message
 
 
@@ -69,6 +81,8 @@ def embed(texts: list[str]) -> list[list[float]]:
         model=settings.embedding_model,
         input=texts,
     )
+    if not resp.data:
+        raise RuntimeError("LLM embedding 返回空 data，可能是模型或输入异常")
     return [item.embedding for item in resp.data]
 
 

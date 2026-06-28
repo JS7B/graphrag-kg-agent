@@ -79,14 +79,16 @@ def test_agent_max_turns_terminates(monkeypatch, ensured_schema):
 
 
 def test_agent_empty_evidence_answers_cannot_answer(monkeypatch, ensured_schema):
-    """问图库里没有的问题（检索召回为空）：应回答「无法回答」、citations 为空。"""
-    ingest_document(ensured_schema, _DOC_OBJ, [_embed_vec()], dim=TEST_DIM)
-    # 用一个与 seed 向量正交的查询向量，确保向量召回为空
-    orthogonal = [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    monkeypatch.setattr(agent_mod.llm, "embed", lambda texts: [orthogonal for _ in texts])
+    """检索召回为空（问图库里没有的问题）：应回答「无法回答」、citations 为空。
+
+    根因修正：原来用"正交向量"试图让向量召回为空，但 Neo4j 向量索引的 cosine
+    检索总会返回 top-k 最近邻（相似度低也返回），无法靠正交制造空召回。改为直接
+    mock search_chunks 返回空列表，这才是真正验证"空证据"场景。
+    """
+    monkeypatch.setattr(agent_mod, "search_chunks", lambda *a, **kw: [])
 
     answer = answer_question_agentic(ensured_schema, "木星有几颗卫星？")
-    assert "无法回答" in answer.text or not answer.citations
+    assert "无法回答" in answer.text
     assert answer.citations == []
 
 
