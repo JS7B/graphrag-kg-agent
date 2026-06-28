@@ -31,6 +31,10 @@ from app.runs.store import RunStore
 
 logger = logging.getLogger(__name__)
 
+# LLM 并发上限（B14）：个人单用户场景，3 足够防并发打爆 rate limit。
+# Python 3.10+ 的 asyncio.Semaphore 不再绑定具体 loop，模块级创建安全。
+_LLM_SEMAPHORE = asyncio.Semaphore(3)
+
 
 def _emit(store: RunStore, run_id: str, stage: Stage, status=RunStatus.RUNNING, **kw):
     """记一条进度事件。失败时 status=FAILED，成功终态 status=SUCCEEDED。"""
@@ -126,21 +130,24 @@ async def _run_chat_agentic(driver: Driver, store: RunStore, run_id: str, questi
     """
     loop = asyncio.get_running_loop()
 
-    def _emit_cb(stage: Stage, message: str) -> None:
-        # 工作线程内调用，通过 call_soon_threadsafe 把 append_event 调度回事件循环线程
-        event = RunEvent(stage=stage, message=message)
+    def _emit_cb(stage: Stage, message: str, **extra) -> None:
+        # 工作线程内调用，通过 call_soon_threadsafe 把 append_event 调度回事件循环线程。
+        # extra 携带 B12 可观测字段（tool_name/tool_input/tool_output），透传给 RunEvent。
+        event = RunEvent(stage=stage, message=message, **extra)
         loop.call_soon_threadsafe(store.append_event, run_id, event)
 
-    try:
-        return await asyncio.to_thread(
-            answer_question_agentic, driver, question, on_event=_emit_cb
-        )
-    except ToolCallingUnsupported as exc:
-        logger.warning("LLM 不支持 tool calling，降级线性 RAG：%s", exc)
-        _emit(store, run_id, Stage.SEARCHING, message="向量召回 + 重排 + 图谱扩展")
-        _emit(store, run_id, Stage.CHECKING, message="组装上下文")
-        _emit(store, run_id, Stage.WRITING, message="生成带引用回答")
-        return await asyncio.to_thread(answer_question, driver, question)
+    # B14：问答是最耗 LLM 的链路（多轮 ReAct），限并发防打爆 rate limit
+    async with _LLM_SEMAPHORE:
+        try:
+            return await asyncio.to_thread(
+                answer_question_agentic, driver, question, on_event=_emit_cb
+            )
+        except ToolCallingUnsupported as exc:
+            logger.warning("LLM 不支持 tool calling，降级线性 RAG：%s", exc)
+            _emit(store, run_id, Stage.SEARCHING, message="向量召回 + 重排 + 图谱扩展")
+            _emit(store, run_id, Stage.CHECKING, message="组装上下文")
+            _emit(store, run_id, Stage.WRITING, message="生成带引用回答")
+            return await asyncio.to_thread(answer_question, driver, question)
 
 
 async def run_delete(

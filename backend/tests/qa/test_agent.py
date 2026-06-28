@@ -102,7 +102,8 @@ def test_agent_on_event_emits_searching(monkeypatch, ensured_schema):
     events: list[tuple[Stage, str]] = []
 
     answer_question_agentic(
-        ensured_schema, "项目用什么图谱数据库？", on_event=lambda s, m: events.append((s, m))
+        ensured_schema, "项目用什么图谱数据库？",
+        on_event=lambda s, m, **extra: events.append((s, m)),
     )
 
     stages = [s for s, _ in events]

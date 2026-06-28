@@ -28,6 +28,8 @@ class Settings(BaseSettings):
 
     # 文档上传
     max_upload_mb: int = 10
+    # PDF 页数上限（防 PDF 炸弹：超大 PDF 拖垮解析与抽取）
+    max_pdf_pages: int = 200
 
     # API 鉴权（公开仓库防裸 curl）。为空则跳过校验，本地开发无感；部署时在 .env 配真实值启用。
     api_key: str = ""
