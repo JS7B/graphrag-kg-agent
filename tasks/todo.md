@@ -214,6 +214,27 @@
 - [x] 核心流程测试通过。（main 全量 119 passed + 1 skip）
 - [x] README 说明如何运行评估。（README 评估章节）
 
+### 多轮对话记忆（B 方案：对话进图谱）
+
+> 规划：大脑与用户逐条确认定板。拆前后端两份独立交接清单（冻结 API 契约解耦并行），分别交 feat/backend、feat/frontend 执行。
+
+- [ ] 后端：会话/消息数据层（conversations 模块 + schema 扩展 + embed_texts 抽取）。
+- [ ] 后端：Agent 接收历史（history 参数）+ run_chat 读历史/写回本轮 + 降级路径同步。
+- [ ] 后端：会话 CRUD API（POST /api/chat 加 conversationId + /api/conversations 四端点）。
+- [ ] 前端：类型（conversation.ts）+ API 封装（conversations.ts）。
+- [ ] 前端：WorkbenchView 多会话状态管理（conversationId + 切换/回看/刷新恢复）。
+- [ ] 前端：会话侧边栏组件 + 三列布局调整 + 无障碍不退化。
+- [ ] 端到端：多轮连贯、会话隔离、持久化、引用红线不退化、测试不回归。
+
+验证：
+
+- [ ] 同会话连续追问能正确指代上文（答案带 [n] 角标）。
+- [ ] 会话隔离：A 会话历史不串到 B 会话。
+- [ ] 刷新页面会话列表/历史可恢复。
+- [ ] Neo4j Browser 能查到 Conversation/Message 节点；message_embedding 索引能召回历史。
+- [ ] 记忆窗口：超 6 条老历史不进 LLM、但仍在图谱。
+- [ ] 现有 126 passed 不回归 + 新增 conversations 测试全过。
+
 ### 公开展示与简历材料
 
 - [ ] 完善 README。
@@ -246,3 +267,4 @@
 - 2026-06-24：双线并行收两个板块。后端「评估与质量保障」：4 篇样本 + ground_truth 标注 + run_eval.py + report.md + docs/evaluation.md，量化四指标（解析100%/关系可用100%/引用命中100%/幻觉16.7% 达标，实体召回57.1% 未达70% 已诚实记录待优化）；评估中抓出 B 板块 run_chat 真 bug（误传 question 字符串给 search_chunks 未 embed + Answer 构造不存在字段），改为复用已验证的 answer_question，加 test_tasks。前端「真实 API 接入收尾」：GraphView 接 /api/graph/*（字段映射层 api/graph.ts 收口后端↔前端命名差异）、SettingsView 接 /health/deps、移除 mockGraph。至此前端工作台与像素 Agent 全链路接真实 API。大脑 review 通过后先后端后前端合入 main，全量 119 passed。GitHub 推送仍暂缓。
 - 2026-06-27：项目从「线性 GraphRAG」升级为名副其实的 **Agentic RAG**。诊断出原 answer_question 是固定 pipeline（无推理循环/自主决策/记忆），经调研定技术路线（纯自研 while 循环 + OpenAI 原生 function calling，不引 LangGraph——单 agent+内部工具场景主流共识，保留编排控制权）。新增 app/qa/agent.py：ReAct 检索-反思循环，LLM 自主在 vector_search/expand_entity 间自选、判断证据够不够、不够换查询再检索；双终止（无 tool_calls / max_turns 兜底）；证据池保留 provenance，引用仍走 build_context [n]↔Citation 不退化；on_event 回调让 run_chat 循环每步真实 emit RunEvent（前端像素房间跟着多轮决策走）；端点不支持 tool calling 时降级线性 pipeline。扩展 llm.chat_with_tools，保留 answer_question 作降级兜底+评估基线。125 passed（test_agent 真连 LLM 验证多轮/终止/兜底/事件，function calling 兼容性实测通过）。单窗口 feat/backend 串行实现（任务内部强依赖链，不宜拆多窗口），大脑 review 通过后合并。
 - 2026-06-28：PR 审计（6 并行子代理 + 主审回源码复核）→ 大脑逐条核实属实后拆前后端整改清单。后端完成 B1-B15：必修(sse-starlette补全+锁版本、API Key鉴权中间件[空跳过/health豁免]、LLM超时+重试+空choices防护、统一启动命令去D:\绝对路径)、正确性(BackgroundTasks用 asyncio.to_thread 异步化+call_soon_threadsafe 跨线程安全 emit 恢复SSE实时性、RunStore TTL GC、CORS限定来源、RunEvent timestampMs 契约统一+删冗余alias、embedding维度运行时校验、500不泄露内部)、加分(RunEvent tool_*/token_usage可观测、问答Semaphore限并发、PDF页数上限)。B10独立测试索引名被 Neo4j「单property单向量索引」限制否决，退回 teardown+lifespan维度校验兜底（DEVLOG记录决策）。126 passed，大脑逐条回源码 review 通过合并。前端审计整改（无障碍7项+响应式+契约协同）待后端契约就绪后动工。
+- 2026-06-29：规划升级方向。用户提出参考 LLM Wiki / GBrain / Loop Engineering 等近期概念，让 Archigraph 从「静态知识消费工具」升级为「辅助开发者更新个人知识库、驱动 Agent 协助自进化」的方向。大脑联网调研上述概念（共同内核：Agent 需要可累积、可结构化、能进化的外挂大脑），与用户多轮澄清后校准诉求：① 不要求系统自进化，而是「协助自进化」（人搜集→Agent 提取关系要点→人据此更新）；② 联网搜索与跨文档对比属后续能力，本次不做；③ **对话记忆是最需要补的能力**。先定方案 B（对话进图谱）落地：对话存 Neo4j（Conversation/Message 节点）、问答都向量化、近期历史注入 LLM（滚动窗口 6 条）、多会话+侧边栏 UI。大脑派 3 个并行子代理摸透后端问答链路/图谱写入模式/前端对话 UI，逐条确认设计决策（历史注入方式、存储位置、会话 UI 形态、记录内容、是否向量化），产出冻结 API 契约并拆前后端两份独立交接清单（handoff-{backend,frontend}-conversation-memory.md），由用户通知两窗口并行执行。待执行完成后大脑 review 合并。
