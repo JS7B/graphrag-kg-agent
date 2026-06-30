@@ -14,7 +14,7 @@ from app.runs import RunStore
 from app.runs.models import RunEvent, RunStatus, Stage
 
 
-async def _fake_run_chat(driver, store, run_id, question):
+async def _fake_run_chat(driver, store, run_id, question, conversation_id):
     store.append_event(run_id, RunEvent(stage=Stage.SEARCHING))
     store.append_event(
         run_id,
@@ -27,7 +27,14 @@ async def _fake_run_chat(driver, store, run_id, question):
 
 
 def test_sse_stream_format(monkeypatch):
+    from app.conversations import Conversation
+
     monkeypatch.setattr(chat_mod, "run_chat", _fake_run_chat)
+    # mock create_conversation 避免真连库建会话
+    monkeypatch.setattr(
+        chat_mod, "create_conversation",
+        lambda driver, *, title="新会话": Conversation(conversation_id="conv_test_sse", title=title),
+    )
     app = create_app()
     app.state.neo4j = get_driver()
     app.state.runs = RunStore()

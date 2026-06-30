@@ -6,6 +6,7 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.conversations import create_conversation
 from app.runs.models import RunKind
 from app.runs.tasks import run_chat
 
@@ -13,15 +14,21 @@ router = APIRouter(prefix="/api", tags=["qa"])
 
 
 class ChatRequest(BaseModel):
+    """问答请求。conversationId 可空：null=首问（后端建会话），非空=追问。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     question: str
+    conversation_id: str | None = Field(default=None, alias="conversationId")
 
 
 class ChatResponse(BaseModel):
-    """异步问答响应：立即返回 runId，前端订阅 SSE 终态事件拿 answer。"""
+    """异步问答响应：立即返回 runId + conversationId，前端订阅 SSE 终态事件拿 answer。"""
 
     model_config = ConfigDict(populate_by_name=True)
 
     run_id: str = Field(alias="runId")
+    conversation_id: str = Field(alias="conversationId")
 
 
 _CHUNK_QUERY = """
@@ -36,16 +43,25 @@ RETURN c.chunk_id AS chunk_id, d.source_path AS document_name,
 async def chat(
     request: Request, background_tasks: BackgroundTasks, body: ChatRequest
 ) -> dict:
-    """对问题起异步 GraphRAG 检索任务（B 板块）。
+    """对问题起异步 GraphRAG 检索任务（多轮记忆版）。
 
-    立即返回 runId，前端订阅 /api/runs/{runId}/events/stream，终态事件带 answer。
-    searching→checking→writing→done 的进度让前端像素 Agent 状态机跟着真实执行走。
+    conversation_id 同步解析：首问（None）新建会话、追问透传，保证 HTTP 响应能立即
+    返回 id（前端拿它后续追问回传）。立即返回 runId + conversationId，前端订阅 SSE 终态事件拿 answer。
     """
     store = request.app.state.runs
     driver = request.app.state.neo4j
+    # 同步解析会话 id（避免异步任务未跑完前端拿不到 id）
+    conversation_id = body.conversation_id
+    if conversation_id is None:
+        conversation = create_conversation(driver, title=body.question[:30])
+        conversation_id = conversation.conversation_id
     run = store.create_run(RunKind.CHAT)
-    background_tasks.add_task(run_chat, driver, store, run.id, body.question)
-    return ChatResponse(run_id=run.id).model_dump(by_alias=True)
+    background_tasks.add_task(
+        run_chat, driver, store, run.id, body.question, conversation_id
+    )
+    return ChatResponse(
+        run_id=run.id, conversation_id=conversation_id
+    ).model_dump(by_alias=True)
 
 
 @router.get("/chunks/{chunk_id}")

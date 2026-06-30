@@ -10,10 +10,16 @@ ANSWER_SYSTEM_PROMPT = (
 )
 
 
-def build_answer_messages(question: str, context: str) -> list[dict]:
-    """构造问答消息（system + 带上下文的 user）。"""
+def build_answer_messages(
+    question: str, context: str, *, history: list[dict] | None = None
+) -> list[dict]:
+    """构造问答消息（system + 可选历史 + 带上下文的 user）。
+
+    history 插入到 system 与 user 之间，让降级路径（线性 pipeline）也能利用追问上下文。
+    """
     user = f"{context}\n\n【问题】\n{question}\n\n请基于上述文档片段作答，并用 [编号] 标注引用。"
-    return [
-        {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
-        {"role": "user", "content": user},
-    ]
+    messages: list[dict] = [{"role": "system", "content": ANSWER_SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user})
+    return messages
