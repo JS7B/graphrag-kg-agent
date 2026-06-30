@@ -21,8 +21,14 @@ import tempfile
 from neo4j import Driver
 
 from app.clients import llm
+from app.conversations import (
+    add_message,
+    create_conversation,
+    get_messages,
+)
 from app.extraction import extract_and_ingest
 from app.graph import embed_chunks, ingest_document
+from app.graph.embedding import embed_texts
 from app.parsing import parse_file
 from app.qa.agent import ToolCallingUnsupported, answer_question_agentic
 from app.qa.pipeline import answer_question
@@ -34,6 +40,9 @@ logger = logging.getLogger(__name__)
 # LLM 并发上限（B14）：个人单用户场景，3 足够防并发打爆 rate limit。
 # Python 3.10+ 的 asyncio.Semaphore 不再绑定具体 loop，模块级创建安全。
 _LLM_SEMAPHORE = asyncio.Semaphore(3)
+
+# 多轮对话记忆窗口：注入最近 N 条消息（约 3 组问答），控 token；全量存图谱。
+_MAX_HISTORY_TURNS = 6
 
 
 def _emit(store: RunStore, run_id: str, stage: Stage, status=RunStatus.RUNNING, **kw):
@@ -98,17 +107,16 @@ async def run_chat(
     store: RunStore,
     run_id: str,
     question: str,
+    conversation_id: str,
 ) -> None:
-    """问答后台任务（Agentic RAG）：通过 on_event 让 Agent 每步真实 emit 事件。
+    """问答后台任务（Agentic RAG + 多轮记忆）：通过 on_event 让 Agent 每步真实 emit 事件。
 
-    优先调 answer_question_agentic（ReAct 循环），循环内每调一个工具就 emit 对应
-    stage（vector_search→SEARCHING、expand_entity→LINKING、生成→WRITING），多轮问答
-    会反复出现 SEARCHING/CHECKING，前端像素房间真正跟着 Agent 多轮决策走。
-    降级：LLM 端点不支持 function calling 时，回退线性 answer_question，并按旧固定
-    序列 emit 事件（searching→checking→writing），保证问答不挂、前端契约可预期。
+    conversation_id 由 chat 路由同步解析（首问新建、追问透传）后传入，保证 HTTP 响应
+    能立即返回 id。本任务读近期历史注入 Agent、调 answer_question_agentic、写回本轮
+    两条消息。降级：LLM 端点不支持 function calling 时，回退线性 answer_question（也带历史）。
     """
     try:
-        answer = await _run_chat_agentic(driver, store, run_id, question)
+        answer = await _run_chat_agentic(driver, store, run_id, question, conversation_id)
     except Exception as exc:  # noqa: BLE001
         logger.exception("问答任务失败 run=%s", run_id)
         _emit(store, run_id, Stage.ERROR, RunStatus.FAILED, message=f"回答失败: {exc}")
@@ -121,33 +129,60 @@ async def run_chat(
     )
 
 
-async def _run_chat_agentic(driver: Driver, store: RunStore, run_id: str, question: str):
-    """跑 Agentic RAG；端点不支持 tool calling 时降级线性 pipeline。返回 Answer。
+def _to_history(messages) -> list[dict]:
+    """把图谱 Message 列表规整成 LLM messages 历史（{role,content}）。"""
+    role_map = {"user": "user", "agent": "assistant"}
+    return [{"role": role_map[m.role], "content": m.text} for m in messages]
 
-    answer_question_agentic 是同步且最重（多轮 LLM 调用），整个包进 asyncio.to_thread
-    避免冻结事件循环。agent 在工作线程内通过 on_event 回调 emit 事件，RunStore 非线程
-    安全，故用 loop.call_soon_threadsafe 把 emit 投递回事件循环线程执行。
+
+async def _run_chat_agentic(
+    driver: Driver, store: RunStore, run_id: str, question: str, conversation_id: str
+):
+    """跑 Agentic RAG + 多轮记忆；端点不支持 tool calling 时降级线性 pipeline。返回 Answer。
+
+    流程：读近期历史 → 注入 Agent → 调用 → 写回本轮 user/agent 两条消息。
+    会话读写是图谱阻塞调用，用 asyncio.to_thread 包裹；on_event 跨线程 emit 用
+    call_soon_threadsafe 投递回事件循环线程。
     """
     loop = asyncio.get_running_loop()
 
     def _emit_cb(stage: Stage, message: str, **extra) -> None:
-        # 工作线程内调用，通过 call_soon_threadsafe 把 append_event 调度回事件循环线程。
-        # extra 携带 B12 可观测字段（tool_name/tool_input/tool_output），透传给 RunEvent。
         event = RunEvent(stage=stage, message=message, **extra)
         loop.call_soon_threadsafe(store.append_event, run_id, event)
 
-    # B14：问答是最耗 LLM 的链路（多轮 ReAct），限并发防打爆 rate limit
+    # 读近期历史（注入窗口，控 token）；全量已存图谱
+    recent = await asyncio.to_thread(
+        get_messages, driver, conversation_id, limit=_MAX_HISTORY_TURNS
+    )
+    history = _to_history(recent)
+
     async with _LLM_SEMAPHORE:
         try:
-            return await asyncio.to_thread(
-                answer_question_agentic, driver, question, on_event=_emit_cb
+            answer = await asyncio.to_thread(
+                answer_question_agentic, driver, question, history=history, on_event=_emit_cb
             )
         except ToolCallingUnsupported as exc:
             logger.warning("LLM 不支持 tool calling，降级线性 RAG：%s", exc)
             _emit(store, run_id, Stage.SEARCHING, message="向量召回 + 重排 + 图谱扩展")
             _emit(store, run_id, Stage.CHECKING, message="组装上下文")
             _emit(store, run_id, Stage.WRITING, message="生成带引用回答")
-            return await asyncio.to_thread(answer_question, driver, question)
+            answer = await asyncio.to_thread(
+                answer_question, driver, question, history=history
+            )
+
+    # 写回本轮两条消息（user + agent），各 embed 一次（问答都向量化，供后续召回）
+    user_embedding = await asyncio.to_thread(embed_texts, [question])
+    await asyncio.to_thread(
+        add_message, driver, conversation_id,
+        role="user", text=question, embedding=user_embedding[0],
+    )
+    agent_embedding = await asyncio.to_thread(embed_texts, [answer.text])
+    await asyncio.to_thread(
+        add_message, driver, conversation_id,
+        role="agent", text=answer.text, embedding=agent_embedding[0],
+        citations=answer.citations, confidence=answer.confidence,
+    )
+    return answer
 
 
 async def run_delete(

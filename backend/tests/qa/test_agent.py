@@ -109,3 +109,26 @@ def test_agent_on_event_emits_searching(monkeypatch, ensured_schema):
     stages = [s for s, _ in events]
     # 多轮问答至少应出现 SEARCHING（vector_search 触发）
     assert Stage.SEARCHING in stages
+
+
+def test_agent_with_history_uses_context(monkeypatch, ensured_schema):
+    """带历史时 agent 应正常作答且答案仍带可追溯引用（守引用可追溯红线）。
+
+    history 模拟一轮已有对话，验证 agent 能利用上下文理解追问，且最终答案引用
+    来自真实检索（不凭历史瞎答）。
+    """
+    _seed_and_patch(monkeypatch, ensured_schema)
+    history = [
+        {"role": "user", "content": "项目用什么图谱数据库？"},
+        {"role": "assistant", "content": "项目用 Neo4j 作为知识图谱数据库。"},
+    ]
+
+    answer = answer_question_agentic(
+        ensured_schema, "它的向量索引叫什么？", history=history,
+    )
+    # 答案非空（agent 能利用上下文理解"它"指代 Neo4j）
+    assert answer.text
+    # 守引用红线：答案若有论断，引用必须来自真实检索的 chunk
+    if answer.citations:
+        cited_chunk_ids = {c.chunk_id for c in answer.citations}
+        assert all(cid.startswith(f"{DOC}#") for cid in cited_chunk_ids)

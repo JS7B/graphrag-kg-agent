@@ -43,8 +43,9 @@ def answer_question(
     top_k: int = 10,
     rerank_top_n: int = 5,
     database: str = "neo4j",
+    history: list[dict] | None = None,
 ) -> Answer:
-    """对问题做 GraphRAG 检索并生成带引用答案。"""
+    """对问题做 GraphRAG 检索并生成带引用答案。history 让降级路径也有追问上下文。"""
     query_embedding = llm.embed([question])[0]
     hits = search_chunks(driver, query_embedding, top_k=top_k, database=database)
     if not hits:
@@ -56,7 +57,7 @@ def answer_question(
     )
     context_str, citations = build_context(reranked, context_obj.paths)
 
-    text = llm.chat(build_answer_messages(question, context_str))
+    text = llm.chat(build_answer_messages(question, context_str, history=history))
 
     used = _used_indices(text)
     cited = [c for c in citations if c.index in used] if used else []

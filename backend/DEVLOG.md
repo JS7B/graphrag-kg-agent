@@ -258,3 +258,30 @@
   - **asyncio.to_thread 必须 await**：第一版 `_run_chat_agentic` 写成 `return asyncio.to_thread(...)` 漏了 await，返回的是协程对象而非结果。to_thread 是协程函数，必须 await。
   - **test_agent 空证据测试用正交向量无效**：想用正交向量让召回为空，但 Neo4j 向量索引总会返回 top-k 最近邻（相似度低也返回）。改 mock search_chunks 返回空列表才是真正测空证据场景。
   - **B12 on_event 签名扩展破坏 lambda 测试**：on_event 从 `(stage, message)` 扩展为 `(stage, message, **extra)` 后，测试里的 `lambda s, m:` 报 unexpected keyword argument。加 `**extra` 适配。
+
+## 2026-06-29 多轮对话记忆（会话存图谱 + 注入窗口）
+
+- 做了什么：给问答补上多轮对话记忆。同会话连续追问，Agent 能利用近期历史上下文作答；历史以 Conversation/Message 节点存入 Neo4j，问答文本都向量化（建 message_embedding 索引）；提供会话 CRUD 接口。新增 `app/conversations/` 模块，扩展 schema（消息向量索引 + 约束），agent/pipeline 接收 history 参数，run_chat 串联会话读写，新增会话 CRUD 路由。
+
+- 这是什么：
+  - **多轮对话记忆**：之前每次问答是无状态的（POST /api/chat 只传 question），第二轮提问不"记得"第一轮。现在引入会话（Conversation）概念，同会话内的问答历史被存下来、注入到后续提问的上下文，Agent 能理解"它""那个"等指代。
+  - **注入窗口（滚动窗口）**：历史不全量塞给 LLM（token 爆炸），只取最近 N 条（MAX_HISTORY_TURNS=6，约 3 组问答）注入 messages；全量仍存图谱不删。
+  - **会话进图谱（B 方案）**：会话和消息作为 Neo4j 节点存储，而不是单独的关系库/文件。复用现有 Neo4j 基础设施，零新依赖，且消息向量化后未来可被向量召回（本次 Agent 工具暂不召回历史，schema 已铺路）。
+
+- 为什么需要：单轮问答在追问场景下体验差（"它用什么数据库？"答不出"它"指什么）。多轮记忆是 RAG 从"单次检索"走向"连续对话"的关键一步，显著提升真实使用体验和简历展示价值。
+
+- 为什么这么做（关键取舍）：
+  - **历史注入而非向量召回**：用滚动窗口直接把近期历史塞进 messages，简单、可控、token 可预测；向量召回历史要额外一轮检索且相关性不保证。设计决策明确"本次不做召回，schema 已铺路留作后续"。
+  - **会话存图谱而非内存/单独库**：复用 Neo4j，零新依赖；消息向量化建索引为未来"召回历史"铺路；与现有 Document/Chunk/Entity 同库，删除会话能级联清理。
+  - **message_id 确定性 + 两段 Cypher**：message_id = `conv_id#turn_index`，但 turn_index 在 MERGE 时才确定——先单独算 next_turn，再用确定的 message_id MERGE，保证幂等可重试。
+  - **conversation_id 同步解析**：首问时 chat 路由同步建会话拿 id，而非丢给异步任务——否则 HTTP 响应返回时任务没跑完，前端拿不到 id 无法追问。
+  - **system prompt 守引用红线**：注入历史后，prompt 明确"回答仍须基于本次检索的【文档片段】并用 [n] 角标标注，不得仅凭历史记忆作答"，防止 Agent 凭记忆瞎答破坏引用可追溯。
+  - **降级路径也带历史**：answer_question（线性降级版）也加 history 参数，保证 LLM 不支持 tool calling 时降级也能利用上下文。
+
+- 踩了什么坑：
+  - **Neo4j 5 的 size() 语法废弃**：`SET cv.message_count = size((cv)-[:HAS_MESSAGE]->(:Message))` 报 CypherSyntaxError，新版要用 `count { (cv)-[:HAS_MESSAGE]->(:Message) }`。Neo4j 5 的 Cypher 语法变化要注意。
+  - **turn_index 必须在 Cypher 里 +1**：`_NEXT_TURN` 返回 `coalesce(max(turn_index),0)`，第一次调用返回 0，直接用作 turn_index 会让首条消息 turn_index=0（期望 1）。改为 `+ 1` 在 Cypher 内完成。
+  - **message 索引可与 chunk 索引共存**：上一批 B10 发现"同 property 不能建两个向量索引"，但那是针对同 label+同 property。Message（:Message{embedding}）与 Chunk（:Chunk{embedding}）是不同 label，可以建两个独立索引——清单的索引隔离方案可行（B10 约束不适用）。
+  - **ChatRequest 需配 alias**：前端契约用 camelCase（conversationId），Pydantic 默认不认，需 `Field(alias="conversationId")` + `populate_by_name=True`。
+  - **Conversation/Message 无 document_id，清理需扩展**：现有 `_clean` fixture 按 document_id 前缀清理，会话节点没有该字段，必须加 `conversation_id STARTS WITH 'conv_test'` 清理，否则污染共享库。
+  - **turn_index 自增与幂等的张力**：add_message 内部自增 turn_index，导致"连续两次 add 相同内容"会产生两条（turn_index 不同）。真正幂等靠 MERGE by message_id——当前 run_chat 是 BackgroundTask 失败不自动重试，重试场景不存在，幂等是防御性的。

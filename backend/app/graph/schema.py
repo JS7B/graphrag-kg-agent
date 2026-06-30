@@ -13,6 +13,8 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 CHUNK_VECTOR_INDEX = "chunk_embedding"
+# 会话消息向量索引（多轮对话记忆）：与 chunk 索引不同 label，可独立共存。
+MESSAGE_VECTOR_INDEX = "message_embedding"
 
 _CONSTRAINTS = (
     "CREATE CONSTRAINT document_id_unique IF NOT EXISTS "
@@ -21,6 +23,10 @@ _CONSTRAINTS = (
     "FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE",
     "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS "
     "FOR (e:Entity) REQUIRE e.entity_id IS UNIQUE",
+    "CREATE CONSTRAINT conversation_id_unique IF NOT EXISTS "
+    "FOR (cv:Conversation) REQUIRE cv.conversation_id IS UNIQUE",
+    "CREATE CONSTRAINT message_id_unique IF NOT EXISTS "
+    "FOR (m:Message) REQUIRE m.message_id IS UNIQUE",
 )
 
 
@@ -52,5 +58,17 @@ def ensure_schema(
         "`vector.similarity_function`: 'cosine' } }",
         database_=database,
     )
+    # 会话消息向量索引（多轮对话记忆）：label 是 Message，与 chunk 索引独立共存。
+    driver.execute_query(
+        f"CREATE VECTOR INDEX {MESSAGE_VECTOR_INDEX} IF NOT EXISTS "
+        "FOR (m:Message) ON (m.embedding) "
+        "OPTIONS { indexConfig: { "
+        f"`vector.dimensions`: {dim}, "
+        "`vector.similarity_function`: 'cosine' } }",
+        database_=database,
+    )
     driver.execute_query("CALL db.awaitIndexes(120)", database_=database)
-    logger.info("Neo4j schema ready: constraints + vector index %s (dim=%d)", index_name, dim)
+    logger.info(
+        "Neo4j schema ready: constraints + vector indexes %s/%s (dim=%d)",
+        index_name, MESSAGE_VECTOR_INDEX, dim,
+    )

@@ -9,13 +9,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.clients.graph import get_driver
+from app.conversations import Conversation
 from app.main import create_app
 from app.routers import chat as chat_mod
 from app.runs import RunStore
 from app.runs.models import RunEvent, RunStatus, Stage
 
 
-async def _fake_run_chat(driver, store, run_id, question):
+async def _fake_run_chat(driver, store, run_id, question, conversation_id):
     """假问答任务：直接 emit 含 answer 的终态事件（方案 a）。"""
     store.append_event(
         run_id, RunEvent(stage=Stage.SEARCHING, status=RunStatus.RUNNING)
@@ -39,9 +40,15 @@ async def _fake_run_chat(driver, store, run_id, question):
     )
 
 
+def _fake_create_conversation(driver, *, title="新会话"):
+    """假建会话：返回固定 conv_test 前缀（被 _clean 清理），不真连库。"""
+    return Conversation(conversation_id="conv_test_fake", title=title)
+
+
 @pytest.fixture(autouse=True)
 def _patch_run_chat(monkeypatch):
     monkeypatch.setattr(chat_mod, "run_chat", _fake_run_chat)
+    monkeypatch.setattr(chat_mod, "create_conversation", _fake_create_conversation)
 
 
 def _client():
@@ -51,12 +58,26 @@ def _client():
     return TestClient(app), app
 
 
-def test_chat_returns_run_id():
+def test_chat_returns_run_id_and_conversation_id():
+    """首问：自动建会话，响应含 runId + conversationId。"""
     client, _ = _client()
     resp = client.post("/api/chat", json={"question": "什么是 GraphRAG？"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "runId" in body
+    assert "conversationId" in body
+    assert body["conversationId"]
+
+
+def test_chat_with_existing_conversation():
+    """追问：传 conversationId 透传，响应返回同一个 id。"""
+    client, _ = _client()
+    resp = client.post(
+        "/api/chat",
+        json={"question": "追问", "conversationId": "conv_test_existing"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["conversationId"] == "conv_test_existing"
 
 
 def test_chat_sse_terminal_event_carries_answer():

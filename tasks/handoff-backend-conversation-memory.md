@@ -13,16 +13,20 @@
 ### 2.1 POST /api/chat（改：请求/响应加 conversationId）
 
 **请求体**：
+
 ```json
 { "question": "它用什么图谱数据库？", "conversationId": null }
 ```
+
 - `question`: str（必填）
 - `conversationId`: str | null（**可空**）。`null`/缺省 = 首问，后端**自动建新会话**；非空 = 已有会话追问。
 
 **响应体**：
+
 ```json
 { "runId": "abcd1234ef56", "conversationId": "conv_xxxxxxxxxxxx" }
 ```
+
 - `runId`: str（不变，12 位）
 - `conversationId`: str（**始终返回**，新建或既有）。前端拿这个存住、后续追问回传。
 
@@ -38,6 +42,7 @@ DELETE /api/conversations/{conversationId}       → 删会话
 ```
 
 **GET /api/conversations 响应**（按 createdAt 降序）：
+
 ```json
 {
   "items": [
@@ -49,6 +54,7 @@ DELETE /api/conversations/{conversationId}       → 删会话
 **POST /api/conversations**（请求体可选 `{title?}`，空则 title="新会话"）→ 响应同 2.3 单会话结构（messageCount=0, messages=[])。
 
 **GET /api/conversations/{id} 响应**：
+
 ```json
 {
   "conversationId": "conv_aaaa",
@@ -61,6 +67,7 @@ DELETE /api/conversations/{conversationId}       → 删会话
   ]
 }
 ```
+
 - `role`: `"user"` | `"agent"`
 - `confidence`: `"high"|"medium"|"low"`（user 为 `null`）
 - `citations`: Citation 列表（结构同 chat 的 answer.citations：`{index, chunkId, documentId, location, snippet}`）；user 消息为 `[]`
@@ -101,10 +108,12 @@ DELETE /api/conversations/{conversationId}       → 删会话
 ### 1. 抽取 embed_texts（改 `app/graph/embedding.py`）
 
 现状 `embed_chunks(doc)` 强耦合 `ParsedDocument`。抽一个通用的：
+
 ```python
 def embed_texts(texts: list[str], *, batch_size: int = 64) -> list[list[float]]:
     """对任意文本列表批量 embed，与输入同序。首向量维度校验。"""
 ```
+
 让 `embed_chunks` 内部改成 `embed_texts([c.text for c in doc.chunks])`（保留维度校验，不破坏现有行为）。消息向量化复用 `embed_texts`。
 
 ### 2. 新增 `app/conversations/` 模块
@@ -134,6 +143,7 @@ def embed_texts(texts: list[str], *, batch_size: int = 64) -> list[list[float]]:
 ### 5. 后台任务串联（改 `app/runs/tasks.py`）
 
 `run_chat` 签名加 `conversation_id: str | None`。流程：
+
 1. conversation_id 为 None → `create_conversation(title=question前30字)`，得到新 id。
 2. 读近期历史：`get_messages(conv_id, limit=MAX_HISTORY_TURNS)`（模块级常量 `MAX_HISTORY_TURNS = 6`，即最近 3 组问答）。
 3. 规整成 history（user→`{role:"user",content:m.text}`，agent→`{role:"assistant",content:m.text}`）。
@@ -142,6 +152,7 @@ def embed_texts(texts: list[str], *, batch_size: int = 64) -> list[list[float]]:
    - `add_message(conv_id, role="user", text=question, embedding=embed_texts([question])[0])`
    - `add_message(conv_id, role="agent", text=answer.text, embedding=embed_texts([answer.text])[0], citations=answer.citations, confidence=answer.confidence)`
 6. 终态事件 `answer` 不变；conversation_id 通过响应体返回（见 chat 路由）。
+
 - embed 调用是阻塞的，记得用 `asyncio.to_thread` 包裹（参考现有阻塞段写法）。
 - 降级分支 `answer_question` 也要传 history、写回消息。
 
@@ -175,13 +186,13 @@ def embed_texts(texts: list[str], *, batch_size: int = 64) -> list[list[float]]:
 
 ## 七、设计决策（大脑与用户已确认，背景知会）
 
-| 维度 | 决策 |
-|---|---|
-| 历史怎么用 | 近期注入上下文（滚动窗口 6 条），不做向量召回历史 |
-| 存哪 | Neo4j 图谱（Conversation/Message 节点） |
-| 会话 UI | 多会话 + 侧边栏（前端做） |
-| 记什么 | 问题+答案+引用证据 |
-| 向量化 | 问答都向量化（建 message_embedding 索引），本次 Agent 工具**暂不**主动召回历史（schema 已铺路，留作后续体验增强） |
+| 维度       | 决策                                                                                                                    |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 历史怎么用 | 近期注入上下文（滚动窗口 6 条），不做向量召回历史                                                                       |
+| 存哪       | Neo4j 图谱（Conversation/Message 节点）                                                                                 |
+| 会话 UI    | 多会话 + 侧边栏（前端做）                                                                                               |
+| 记什么     | 问题+答案+引用证据                                                                                                      |
+| 向量化     | 问答都向量化（建 message_embedding 索引），本次 Agent 工具**暂不**主动召回历史（schema 已铺路，留作后续体验增强） |
 
 ## 八、交接
 

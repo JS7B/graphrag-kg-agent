@@ -54,7 +54,9 @@ _AGENT_SYSTEM_PROMPT = (
     "3. 若证据不足或需要补充关联信息，可换一个查询再检索，或用 expand_entity 挖关系。\n"
     "4. 当证据足以回答时，停止调用工具，直接给出最终答案。\n"
     "回答规则：每条来自文档的论断，在句末用方括号角标标注来源，如 [1]、[2]，"
-    "角标号对应检索结果里的片段编号。若检索不到足够信息，说明「根据现有资料无法回答」，不要编造。"
+    "角标号对应检索结果里的片段编号。若检索不到足够信息，说明「根据现有资料无法回答」，不要编造。\n"
+    "注意：上方可能有同会话的对话历史作为上下文参考，但回答仍须基于本次检索到的【文档片段】"
+    "并用 [n] 角标标注引用，不得仅凭历史记忆作答。"
 )
 
 
@@ -227,19 +229,23 @@ def answer_question_agentic(
     top_k: int = 10,
     rerank_top_n: int = 5,
     database: str = "neo4j",
+    history: list[dict] | None = None,
     on_event: Callable[..., None] | None = None,
 ) -> Answer:
     """Agentic RAG 问答：ReAct 循环，LLM 自主决定检索策略，证据足够后生成带引用答案。
 
+    history 为同会话近期对话（已规整为 {role,content} 列表），插入到 system 与当前
+    question 之间，让 Agent 理解追问上下文。history=None 时行为不变（保现有测试不回归）。
     on_event 回调让循环每一步通知外部（run_chat 用它 emit RunEvent），本函数不依赖
     RunStore，保持纯检索逻辑、可单测。端点不支持 tool calling 时抛 ToolCallingUnsupported。
     """
     evidence_pool: dict[str, ChunkHit] = {}
     paths_acc: list[RelationPath] = []
-    messages: list[dict] = [
-        {"role": "system", "content": _AGENT_SYSTEM_PROMPT},
-        {"role": "user", "content": question},
-    ]
+    messages: list[dict] = [{"role": "system", "content": _AGENT_SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)  # 追问上下文：system 之后、当前问题之前
+    messages.append({"role": "user", "content": question})
+
 
     for turn in range(max_turns):
         try:
