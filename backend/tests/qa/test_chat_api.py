@@ -60,7 +60,7 @@ def test_chat_returns_run_id_with_seed(monkeypatch, ensured_schema):
     """
     _seed_graph(ensured_schema)
 
-    async def _fake_run_chat(driver, store, run_id, question):
+    async def _fake_run_chat(driver, store, run_id, question, conversation_id):
         store.append_event(
             run_id, RunEvent(stage=Stage.SEARCHING, status=RunStatus.RUNNING)
         )
@@ -77,9 +77,15 @@ def test_chat_returns_run_id_with_seed(monkeypatch, ensured_schema):
             ),
         )
 
+    from app.conversations import Conversation
     from app.routers import chat as chat_mod
 
     monkeypatch.setattr(chat_mod, "run_chat", _fake_run_chat)
+    # mock create_conversation 避免真连库建会话污染
+    monkeypatch.setattr(
+        chat_mod, "create_conversation",
+        lambda driver, *, title="新会话": Conversation(conversation_id="conv_test_seed", title=title),
+    )
     client, _ = _client(ensured_schema)
     resp = client.post("/api/chat", json={"question": "用什么存储知识图谱？"})
     assert resp.status_code == 200

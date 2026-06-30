@@ -57,10 +57,20 @@ def ensured_schema(neo4j_driver):
 
 @pytest.fixture(autouse=True)
 def _clean(neo4j_driver):
-    """每个测试后清理 test_ 前缀的节点（含其关系），不污染共享库。"""
+    """每个测试后清理 test_ 前缀的节点（含其关系），不污染共享库。
+
+    会话测试用 conv_test 前缀的 conversation_id（Conversation/Message 无 document_id，
+    不能复用 document_id 清理，需单独按 conversation_id 前缀清理）。
+    """
     yield
+    # 清理 Document/Chunk/Entity 等（document_id 前缀）
     neo4j_driver.execute_query(
         "MATCH (n) WHERE n.document_id STARTS WITH 'test_' DETACH DELETE n",
+        database_="neo4j",
+    )
+    # 清理会话测试数据（conversation_id 前缀 conv_test）
+    neo4j_driver.execute_query(
+        "MATCH (n) WHERE n.conversation_id STARTS WITH 'conv_test' DETACH DELETE n",
         database_="neo4j",
     )
 

@@ -9,8 +9,10 @@ from app.clients.graph import close, get_driver
 from app.config import get_settings
 from app.errors import register_exception_handlers
 from app.graph import ensure_schema
+from app.graph.schema import CHUNK_VECTOR_INDEX, MESSAGE_VECTOR_INDEX
 from app.logging_conf import setup_logging
 from app.routers.chat import router as chat_router
+from app.routers.conversations import router as conversations_router
 from app.routers.documents import router as documents_router
 from app.routers.graph import router as graph_router
 from app.routers.health import router as health_router
@@ -18,6 +20,10 @@ from app.routers.runs import router as runs_router
 from app.runs import RunStore
 
 logger = logging.getLogger(__name__)
+
+# 两个向量索引的维度兜底常量（lifespan 启动校验用）
+_CHUNK_INDEX = CHUNK_VECTOR_INDEX
+_MESSAGE_INDEX = MESSAGE_VECTOR_INDEX
 
 
 @asynccontextmanager
@@ -33,7 +39,8 @@ async def lifespan(app: FastAPI):
     app.state.neo4j = get_driver()
     app.state.runs = RunStore()
     try:
-        _ensure_vector_index_dim(app.state.neo4j)
+        _ensure_vector_index_dim(app.state.neo4j, _CHUNK_INDEX)
+        _ensure_vector_index_dim(app.state.neo4j, _MESSAGE_INDEX)
         ensure_schema(app.state.neo4j)
     except Exception as exc:  # noqa: BLE001 — 依赖不可用不应阻断启动
         logger.warning("ensure_schema 失败（Neo4j 可能未就绪）：%s", exc)
@@ -43,20 +50,19 @@ async def lifespan(app: FastAPI):
         close(app.state.neo4j)
 
 
-def _ensure_vector_index_dim(driver) -> None:
-    """校验向量索引维度与配置一致；不一致（如测试残留 8 维）则 DROP+重建。
+def _ensure_vector_index_dim(driver, index_name: str) -> None:
+    """校验向量索引维度与配置一致；不一致（如测试残留 8 维）则 DROP（由后续 ensure_schema 重建）。
 
     根治 L6 兜底：测试强杀导致 8 维残留时，应用启动自动修正，真实问答不再撞维度。
-    Neo4j 不允许同 property 建两个向量索引，故只能 DROP 重建（而非隔离索引名）。
+    对 chunk / message 两个向量索引都调用。
     """
     from app.config import get_settings
-    from app.graph.schema import CHUNK_VECTOR_INDEX
 
     expected = get_settings().embedding_dim
     records, _, _ = driver.execute_query(
         "SHOW INDEXES YIELD name, type, options WHERE name=$name AND type='VECTOR' "
         "RETURN options",
-        name=CHUNK_VECTOR_INDEX,
+        name=index_name,
         database_="neo4j",
     )
     if not records:
@@ -65,11 +71,9 @@ def _ensure_vector_index_dim(driver) -> None:
     if actual_dim != expected:
         logger.warning(
             "向量索引 %s 维度 %s 与配置 %s 不符，DROP 重建（可能是测试残留）",
-            CHUNK_VECTOR_INDEX, actual_dim, expected,
+            index_name, actual_dim, expected,
         )
-        driver.execute_query(
-            f"DROP INDEX {CHUNK_VECTOR_INDEX}", database_="neo4j"
-        )
+        driver.execute_query(f"DROP INDEX {index_name}", database_="neo4j")
 
 
 def create_app() -> FastAPI:
@@ -80,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(chat_router)
     app.include_router(documents_router)
+    app.include_router(conversations_router)
     app.include_router(runs_router)
     app.include_router(graph_router)
     return app
