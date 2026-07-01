@@ -47,11 +47,11 @@ export default function App() {
         {view === 'graph' && <GraphView />}
       </main>
       {settingsOpen && (
-        // 点遮罩背景关闭；点内容区（settingsPlaceholder 内部）不关。
         <div
           className={styles.settingsOverlay}
           onClick={() => setSettingsOpen(false)}
         >
+          {/* 点遮罩背景关闭；点内容区（settingsPlaceholder 内部）不关 */}
           <div
             className={styles.settingsPlaceholder}
             onClick={(e) => e.stopPropagation()}
