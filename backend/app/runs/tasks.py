@@ -191,15 +191,14 @@ async def run_delete(
     run_id: str,
     document_id: str,
 ) -> None:
-    """删除后台任务：deleting→done，清理 Chunk/MENTIONS/RELATES/孤立 Entity/Document。
+    """删除后台任务：deleting→done，清理 Chunk/MENTIONS/RELATES/Entity/Document。
 
-    实体若还被其它文档引用则保留（DETACH 只断开本文档的关系）。
+    Entity 的 entity_id 含 document_id（见 extraction/merge.py），按文档隔离、不跨文档共享，
+    故删文档时其 Entity 一并按 document_id 清理（比原先靠 MENTIONS 孤立性判定更可靠：
+    原写法 NOT (c:Chunk)-[:MENTIONS]->(e) 在 Neo4j 5+ 会因 pattern expression 引入新变量 c 报错）。
     """
     try:
         _emit(store, run_id, Stage.DELETING, message=f"删除 {document_id}")
-        # 两段 Cypher 逻辑上是一组（删 chunk/document + 清理孤立 entity），合并成一个
-        # 同步 helper 整体丢进线程池，只创建一个工作线程。
-        # Entity 没有直接连 Document，孤立性靠 MENTIONS 关系判定。
         await asyncio.to_thread(_do_delete, driver, document_id)
         _emit(store, run_id, Stage.IDLE, RunStatus.SUCCEEDED, message="删除完成")
     except Exception as exc:  # noqa: BLE001
@@ -208,7 +207,11 @@ async def run_delete(
 
 
 def _do_delete(driver: Driver, document_id: str) -> None:
-    """删除文档的同步 Cypher：先删 Chunk/Document，再清理孤立 Entity。"""
+    """删除文档全部数据的同步 Cypher：Chunk/Document + 本文档的 Entity。
+
+    一段 Cypher 完成（不拆两段），避免中间状态：第一段成功第二段失败会留下 Document 删了但
+    Entity 残留的脏数据。Entity 按 document_id 精确匹配删除（entity_id 含 document_id）。
+    """
     driver.execute_query(
         """
         MATCH (d:Document {document_id: $document_id})
@@ -216,15 +219,10 @@ def _do_delete(driver: Driver, document_id: str) -> None:
         DETACH DELETE c
         WITH d
         DETACH DELETE d
-        """,
-        document_id=document_id,
-        database_="neo4j",
-    )
-    driver.execute_query(
-        """
-        MATCH (e:Entity)
-        WHERE NOT (c:Chunk)-[:MENTIONS]->(e)
+        WITH 1 AS _
+        MATCH (e:Entity {document_id: $document_id})
         DETACH DELETE e
         """,
+        document_id=document_id,
         database_="neo4j",
     )
