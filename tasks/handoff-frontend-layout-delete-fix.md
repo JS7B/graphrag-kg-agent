@@ -1,12 +1,13 @@
-# 前端交接清单 · 工作台布局重排 + 文档删除确认（feat/frontend）
+# 前端交接清单 · 工作台布局重排 + 文档删除确认 + 会话状态保持（feat/frontend）
 
 > 大脑整理，交 feat/frontend 窗口执行。**开工前先 `git merge main` 同步最新 main**（main 现领先一个后端提交 e72c084，纯后端改动，合过来无冲突）。
-> 两个独立的前端体验修正，均不涉及后端。
+> 三个独立的前端体验修正，均不涉及后端。
 
-## 一、要做什么（两件事）
+## 一、要做什么（三件事）
 
 1. **工作台布局重排**：引用证据面板从中列挪到右列；AgentRoom 下方状态文字替换为 Run Events 轨迹。解决"对话区被引用面板挤得太小"。
 2. **文档删除确认**：文档库删除改为弹窗确认（二次确认），确认后才带 `confirm=true` 调后端。解决"点删除只报错不删"。
+3. **会话状态保持（新增）**：切换视图（文档库/图谱）再切回工作台，会话不丢失。解决"切走再回来回到空态、要手动重选会话"。
 
 ---
 
@@ -99,26 +100,69 @@
 
 ---
 
-## 四、边界与验证
+## 四、任务 3：会话状态保持（切换视图不丢会话）
+
+### 4.1 问题
+
+`App.tsx:45-47` 用**条件渲染**切换视图：
+```tsx
+{view === 'workbench' && <WorkbenchView />}
+{view === 'library' && <LibraryView />}
+{view === 'graph' && <GraphView />}
+```
+切到 library/graph 时 `view !== 'workbench'`，**WorkbenchView 组件被卸载**，内部所有 state（`conversationId` / `messages` / `conversations` / `chatRunId`）全部销毁。切回 workbench 时重新 mount，state 归零，回到空态（用户要手动重选会话）。
+
+### 4.2 方案：CSS 隐藏替代条件渲染（已定，简单优先）
+
+把三个视图**都常驻渲染**，用 CSS `display:none` 切换显隐，组件不卸载、state 天然保留。
+
+**App.tsx 改法**：
+```tsx
+<main className={styles.main}>
+  <div className={styles.viewPane} hidden={view !== 'workbench'}><WorkbenchView /></div>
+  <div className={styles.viewPane} hidden={view !== 'library'}><LibraryView /></div>
+  <div className={styles.viewPane} hidden={view !== 'graph'}><GraphView /></div>
+</main>
+```
+- 用 HTML `hidden` 属性（等价 `display:none`），切走的视图不可见但**不卸载**。
+- WorkbenchView 的 `conversationId` / `messages` 等全部保留，切回来直接恢复。
+
+### 4.3 注意事项（必读）
+
+- **GraphView 常驻的副作用**：Cytoscape 实例和 `/api/graph/*` 请求会一直挂着。需确认 GraphView 切走时是否还在轮询/请求数据——若有 useEffect 的数据轮询，要么保留（数据新鲜），要么在 `hidden` 时暂停（省请求）。**先检查 GraphView 有无轮询，有则加 hidden 感知**（可通过 props 传 `active` 或用 IntersectionObserver，简单起见传 `active` prop 即可）。
+- **不要用方案 B（localStorage 持久化）**：会引入序列化/反序列化 + 与后端同步的复杂度，违反简单优先。CSS 隐藏更彻底。
+- **LibraryView 同理受益**：切走再回来文档列表 state 也保留（虽然它本来每次 mount 会重新拉，但常驻后不重复请求）。
+- `.viewPane` 的 CSS：`height:100%`，`hidden` 属性浏览器自动 `display:none`，无需额外样式（但确保 hidden 时的视图不抢焦点/不参与 tab 序列——`hidden` 属性已天然从无障碍树移除，OK）。
+- **不要改 WorkbenchView 的 state 逻辑**——它不需要知道自己是 active 还是 hidden，CSS 隐藏对它透明。
+
+### 4.4 为什么不提升 state 到 App 层
+
+提升 conversationId/messages 到 App 也能解决，但要改 App + WorkbenchView 两处的 props 传递，且 messages 是复杂结构（含 answer/citations）。CSS 隐藏零改动 WorkbenchView，最简单。
+
+---
+
+## 五、边界与验证
 
 - **不改后端、不改契约**。
 - **红线守**：AgentRoom 的 stage 仍只来自真实 RunEvent。
 - **无障碍不退化**：新弹窗、移动后的面板都要键盘可达、aria 完整。
 - **typecheck + build**：改完务必跑 `npm run build`（`tsc -b` 比 `tsc --noEmit` 严）。
-- **DEVLOG**（`frontend/DEVLOG.md`）：追加布局调整思路 + 删除确认交互。
+- **DEVLOG**（`frontend/DEVLOG.md`）：追加布局调整思路 + 删除确认交互 + 视图常驻方案。
 - 联调：前后端都在跑（后端 8000、前端 5173、Neo4j 在跑），改完真机验证：
   - 对话区是否变大、引用面板在右列是否正常、AgentRoom 下方是否显示轨迹而非状态文字。
   - 文档删除：点删除弹确认框、确认后真删（列表刷新）。
+  - 切换视图：新建会话→问几句→切到文档库→切回工作台，会话和对话历史仍在。
 
-## 五、验收
+## 六、验收
 
 - [ ] 对话区（ChatThread）明显变大，不再被引用面板挤占。
 - [ ] 引用证据面板在右列（AgentRoom 下方或旁边）正常显示。
 - [ ] AgentRoom 下方显示 Run Events 轨迹（不再是「待命/抽取」状态文字）。
 - [ ] 像素小人动画正常（stage 驱动不变）。
 - [ ] 文档删除：点删除弹确认框，确认后才删（带 confirm=true），取消则不删。
+- [ ] **切换视图（文档库/图谱）再切回工作台，当前会话 + 对话历史完整保留**，不回空态。
 - [ ] typecheck 零错误、build 通过。
 
-## 六、交接
+## 七、交接
 
 本地 commit（写清做了什么），**口头通知大脑分支名**，大脑读 diff 评审、合并。**不自行合并 main，不 push。**
