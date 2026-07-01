@@ -39,7 +39,7 @@ export default function App() {
       <TopBar
         active={view}
         onChange={setView}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onToggleSettings={() => setSettingsOpen((v) => !v)}
       />
       <main className={styles.main}>
         {view === 'workbench' && <WorkbenchView />}
@@ -47,9 +47,18 @@ export default function App() {
         {view === 'graph' && <GraphView />}
       </main>
       {settingsOpen && (
-        <div className={styles.settingsPlaceholder}>
-          <SettingsView />
-          <button ref={closeBtnRef} onClick={() => setSettingsOpen(false)}>关闭</button>
+        <div
+          className={styles.settingsOverlay}
+          onClick={() => setSettingsOpen(false)}
+        >
+          {/* 点遮罩背景关闭；点内容区（settingsPlaceholder 内部）不关 */}
+          <div
+            className={styles.settingsPlaceholder}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SettingsView />
+            <button ref={closeBtnRef} onClick={() => setSettingsOpen(false)}>关闭</button>
+          </div>
         </div>
       )}
     </div>

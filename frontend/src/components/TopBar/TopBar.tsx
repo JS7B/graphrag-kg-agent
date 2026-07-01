@@ -17,10 +17,10 @@ const HEALTH_POLL_MS = 30_000
 interface TopBarProps {
   active: ViewKey
   onChange: (v: ViewKey) => void
-  onOpenSettings: () => void
+  onToggleSettings: () => void
 }
 
-export function TopBar({ active, onChange, onOpenSettings }: TopBarProps) {
+export function TopBar({ active, onChange, onToggleSettings }: TopBarProps) {
   // F10 状态灯接 /health/deps：'unknown'(拉取前/失败) | HealthDeps
   const [deps, setDeps] = useState<HealthDeps | null>(null)
 
@@ -76,7 +76,7 @@ export function TopBar({ active, onChange, onOpenSettings }: TopBarProps) {
           aria-label={`LLM ${llmOk ? '已配置' : deps ? '未配置' : '未知'}`}
           role="img"
         />
-        <button className={styles.settingsBtn} onClick={onOpenSettings}>
+        <button className={styles.settingsBtn} onClick={onToggleSettings} aria-label="设置">
           <GearIcon size={14} /> 设置
         </button>
       </div>

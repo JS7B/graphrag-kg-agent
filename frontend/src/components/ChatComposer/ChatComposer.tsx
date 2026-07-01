@@ -34,6 +34,16 @@ export function ChatComposer({ onSend, busy = false }: ChatComposerProps) {
           enterKeyHint="send"
           disabled={busy}
           onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            // Enter 发送、Shift+Enter 换行；输入法组合中（选词回车）不触发。
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault()
+              if (trimmedText && !busy) {
+                onSend(trimmedText)
+                setText('')
+              }
+            }
+          }}
         />
       </label>
       <Button className={styles.sendButton} disabled={disabled} type="submit" variant="primary">
