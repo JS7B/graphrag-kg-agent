@@ -11,6 +11,7 @@ _PLACEHOLDER_MARKERS = ("your-", "please-change")
 
 
 def _client() -> OpenAI:
+    """embedding 用的 client（走 OPENAI_* 配置，通常 modelverse）。"""
     settings = get_settings()
     return OpenAI(
         base_url=settings.openai_base_url,
@@ -22,15 +23,40 @@ def _client() -> OpenAI:
     )
 
 
-def is_configured() -> bool:
-    """判断 LLM 是否已配置真实值（非空且不含占位标记）。"""
+def _chat_client() -> OpenAI:
+    """chat 用的 client（优先 CHAT_* 配置如 DeepSeek 官方，留空回退 OPENAI_*）。
+
+    chat 与 embedding 可分走不同 provider：chat 用 DeepSeek 官方、embedding/rerank
+    继续用 modelverse。两套配置分离后，切 chat 厂商不影响已入库的向量索引。
+    """
     settings = get_settings()
-    base_url = settings.openai_base_url
-    api_key = settings.openai_api_key
-    if not base_url or not api_key:
-        return False
-    combined = f"{base_url} {api_key}".lower()
-    return not any(marker in combined for marker in _PLACEHOLDER_MARKERS)
+    return OpenAI(
+        base_url=settings.effective_chat_base_url,
+        api_key=settings.effective_chat_api_key,
+        timeout=httpx.Timeout(60, connect=10),
+        max_retries=3,
+    )
+
+
+def is_configured() -> bool:
+    """判断 LLM 是否已配置真实值（chat 与 embedding 任一可用即视为配置过）。
+
+    chat 和 embedding 可分走不同 provider，故两边都检查；都不含占位标记才算 configured。
+    """
+    settings = get_settings()
+    # chat 侧（优先 CHAT_*，回退 OPENAI_*）
+    chat_url = settings.effective_chat_base_url
+    chat_key = settings.effective_chat_api_key
+    chat_ok = bool(chat_url and chat_key) and not any(
+        m in f"{chat_url} {chat_key}".lower() for m in _PLACEHOLDER_MARKERS
+    )
+    # embedding 侧（OPENAI_*）
+    embed_url = settings.openai_base_url
+    embed_key = settings.openai_api_key
+    embed_ok = bool(embed_url and embed_key) and not any(
+        m in f"{embed_url} {embed_key}".lower() for m in _PLACEHOLDER_MARKERS
+    )
+    return chat_ok or embed_ok
 
 
 def chat(messages: list[dict], *, response_format: dict | None = None) -> str:
@@ -43,7 +69,7 @@ def chat(messages: list[dict], *, response_format: dict | None = None) -> str:
     kwargs: dict = {"model": settings.chat_model, "messages": messages}
     if response_format is not None:
         kwargs["response_format"] = response_format
-    resp = _client().chat.completions.create(**kwargs)
+    resp = _chat_client().chat.completions.create(**kwargs)
     # 部分兼容端点在异常输入下可能返回空 choices，直接取 [0] 会 IndexError。
     if not resp.choices:
         raise RuntimeError("LLM 返回空 choices，可能是模型或输入异常")
@@ -63,7 +89,7 @@ def chat_with_tools(
     端点不支持 tools 时会抛 openai.BadRequestError，由 agent 层捕获触发降级。
     """
     settings = get_settings()
-    resp = _client().chat.completions.create(
+    resp = _chat_client().chat.completions.create(
         model=settings.chat_model,
         messages=messages,
         tools=tools,

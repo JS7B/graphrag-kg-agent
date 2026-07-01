@@ -14,12 +14,26 @@ class Settings(BaseSettings):
     """应用配置项。字段名 snake_case，环境变量名大小写不敏感。"""
 
     # LLM（OpenAI-compatible）
+    # openai_* 给 embedding/rerank 用；chat 可单独走另一家（如 DeepSeek 官方）。
+    # chat_base_url/chat_api_key 留空时回退 openai_*，保持单 provider 部署不破坏。
     openai_base_url: str = ""
     openai_api_key: str = ""
+    chat_base_url: str = ""
+    chat_api_key: str = ""
     chat_model: str = ""
     embedding_model: str = ""
     embedding_dim: int = 3072
     rerank_model: str = "bge-reranker-v2-m3"
+
+    @property
+    def effective_chat_base_url(self) -> str:
+        """chat 实际使用的 base_url：优先 chat_base_url，留空回退 openai_base_url。"""
+        return self.chat_base_url or self.openai_base_url
+
+    @property
+    def effective_chat_api_key(self) -> str:
+        """chat 实际使用的 api_key：优先 chat_api_key，留空回退 openai_api_key。"""
+        return self.chat_api_key or self.openai_api_key
 
     # Neo4j
     neo4j_uri: str = ""
